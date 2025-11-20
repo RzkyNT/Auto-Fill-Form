@@ -1,0 +1,19 @@
+{
+  "name": "Fake Filler Simple",
+  "version": "1.0",
+  "manifest_version": 3,
+  "description": "Auto-fill form fields with random data",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "https://random-word-api.vercel.app/"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["utils.js", "content.js"]
+    }
+  ]
+}
