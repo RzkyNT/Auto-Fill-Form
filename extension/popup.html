@@ -2,21 +2,32 @@
 <html>
 <head>
   <style>
-    body { font-family: Arial; width: 200px; }
-    button { width: 100%; padding: 10px; margin-top: 10px; }
+    body { font-family: Arial; width: 250px; padding: 10px; }
+    button { width: 100%; padding: 10px; margin-top: 10px; border: 1px solid #ccc; background-color: #f0f0f0; cursor: pointer; }
+    #smart-fill { background-color: #e8dffc; font-weight: bold; }
+    h3, h4 { margin-top: 0; margin-bottom: 10px; }
+    .settings-group { margin-top: 15px; padding-top: 10px; border-top: 1px solid #ccc; }
+    .api-key-input { width: calc(100% - 12px); padding: 5px; margin-bottom: 5px; }
+    .save-button { width: 100%; padding: 5px; font-size: 0.8em;}
   </style>
 </head>
 <body>
   <h3>Fake Filler</h3>
-  <button id="fill">Fill Random</button>
+  <button id="fill">Fill with Random Data</button>
+  <button id="smart-fill">Smart Fill with AI</button>
 
-  <hr>
-
-  <div>
+  <div class="settings-group">
+    <h4>Settings</h4>
     <label>
       <input type="checkbox" id="auto-run" />
       Auto-run on page load
     </label>
+  </div>
+
+  <div class="settings-group">
+    <label for="api-keys">Gemini API Keys (One per line)</label>
+    <textarea id="api-keys" class="api-key-input" placeholder="Enter API keys, one per line" rows="5"></textarea>
+    <button id="save-keys" class="save-button">Save Keys</button>
   </div>
 
   <script src="popup.js"></script>

@@ -5,8 +5,12 @@
   "description": "Auto-fill form fields with random data",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
-    "https://random-word-api.vercel.app/"
+    "https://random-word-api.vercel.app/",
+    "https://generativelanguage.googleapis.com/"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html"
   },

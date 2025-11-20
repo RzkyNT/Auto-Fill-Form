@@ -1,5 +1,6 @@
 // Listen for manual trigger
 window.addEventListener("fakeFiller:run", doFakeFill);
+window.addEventListener("fakeFiller:smartFill", doSmartFill);
 
 // Auto-run if enabled
 window.addEventListener('load', () => {
@@ -23,7 +24,7 @@ async function doFakeFill() {
 }
 
 /**
- * Fills standard HTML forms.
+ * Fills standard HTML forms with random data.
  */
 async function doFakeFillStandard() {
   const fields = document.querySelectorAll("input:not([type=hidden]), textarea, select");
@@ -62,13 +63,13 @@ async function doFakeFillStandard() {
 }
 
 /**
- * Fills Google Forms.
+ * Fills Google Forms with random data.
  */
 async function doFakeFillGForm() {
     const questions = document.querySelectorAll('div[role="listitem"]');
 
     for (const q of questions) {
-        const questionText = (q.querySelector('.M6JsMd span')?.textContent || '').toLowerCase();
+        const questionText = (q.querySelector('div[role="heading"]')?.textContent || '').trim().toLowerCase();
 
         // 1. Text Inputs
         const textInput = q.querySelector('input[type="text"], textarea');
@@ -108,6 +109,104 @@ async function doFakeFillGForm() {
             }
         }
     }
+}
+
+/**
+ * Sends a prompt to the background service worker to call the Gemini API.
+ * @param {string} prompt The prompt to send to the AI.
+ * @returns {Promise<string>} A promise that resolves with the AI's answer.
+ */
+function getAiResponse(prompt) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ action: "callGeminiApi", prompt }, (response) => {
+      if (chrome.runtime.lastError) {
+        // Handle errors from the extension runtime itself
+        return reject(new Error(chrome.runtime.lastError.message));
+      }
+      if (response.error) {
+        return reject(new Error(response.error));
+      }
+      resolve(response.answer);
+    });
+  });
+}
+
+/**
+ * Fills forms intelligently using Gemini AI.
+ */
+async function doSmartFill() {
+  console.log("--- Smart Fill Initialized ---");
+
+  const isGForm = window.location.hostname === 'docs.google.com' && window.location.pathname.includes('/forms/');
+  if (!isGForm) {
+    alert("Smart Fill currently only works on Google Forms.");
+    console.warn("Smart Fill aborted: Not a Google Form.");
+    return;
+  }
+
+  const questions = document.querySelectorAll('div[role="listitem"]');
+  console.log(`Found ${questions.length} question items.`);
+
+  for (const [index, q] of questions.entries()) {
+    console.log(`\n--- Processing Question ${index + 1} ---`);
+    const questionText = (q.querySelector('div[role="heading"]')?.textContent || '').trim();
+    if (!questionText) {
+      console.warn("Could not find question text for this item. Skipping.");
+      continue;
+    }
+    console.log(`Question Text: "${questionText}"`);
+
+    try {
+      // Handle multiple choice and checkboxes
+      const choices = q.querySelectorAll('div[role="radio"], div[role="checkbox"]');
+      if (choices.length > 0) {
+        const choiceLabels = Array.from(choices).map(c => c.getAttribute('aria-label') || c.textContent).filter(Boolean);
+        if (choiceLabels.length === 0) {
+          console.warn("Found choices but could not extract any labels. Skipping.");
+          continue;
+        }
+        console.log("Detected Choices:", choiceLabels);
+        
+        const prompt = `Question: "${questionText}"\nOptions: [${choiceLabels.join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
+        console.log("Sending Prompt to Background:", prompt);
+
+        const aiAnswer = await getAiResponse(prompt);
+        console.log(`AI Answer Received: "${aiAnswer}"`);
+        
+        const targetChoice = Array.from(choices).find(c => {
+          const label = (c.getAttribute('aria-label') || c.textContent);
+          // A more robust check: see if the AI answer is a substring of the option label, or vice-versa.
+          return label && (label.toLowerCase().includes(aiAnswer.toLowerCase()) || aiAnswer.toLowerCase().includes(label.toLowerCase()));
+        });
+
+        if (targetChoice) {
+          console.log(`Match found! Clicking choice: "${targetChoice.getAttribute('aria-label') || targetChoice.textContent}"`);
+          targetChoice.click();
+        } else {
+          console.warn(`AI answer "${aiAnswer}" did not clearly match any option.`);
+          console.log("Available options:", choiceLabels);
+        }
+      }
+      // Handle text input
+      else {
+        const textInput = q.querySelector('input[type="text"], textarea');
+        if (textInput) {
+           console.log("Detected Text Input field.");
+           const prompt = `Provide a concise and appropriate answer for the following question: "${questionText}"`;
+           console.log("Sending Prompt to Background:", prompt);
+           textInput.value = await getAiResponse(prompt);
+           console.log(`AI Answer Received: "${textInput.value}"`);
+           textInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+    } catch (error) {
+      console.error("Error during Smart Fill for this question:", error);
+      alert(`An error occurred while using the Gemini API: ${error.message}`);
+      break; 
+    }
+    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between questions
+  }
+  console.log("--- Smart Fill Completed ---");
 }
 
 /**
