@@ -2,11 +2,20 @@
 
 console.log("Background service worker started.");
 
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+}
+
 async function getAvailableApiKey() {
   return new Promise(resolve => {
     chrome.storage.local.get({ apiKeys: [] }, ({ apiKeys }) => {
       const now = Date.now();
       if (!apiKeys || apiKeys.length === 0) return resolve(null);
+
+      shuffle(apiKeys); // Randomize the key order
 
       for (const api of apiKeys) {
         if (!api.cooldownUntil || api.cooldownUntil <= now) {

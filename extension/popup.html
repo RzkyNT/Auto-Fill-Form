@@ -1,18 +1,129 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <title>Fake Filler</title>
   <style>
-    body { font-family: Arial; width: 250px; padding: 10px; }
-    button { width: 100%; padding: 10px; margin-top: 10px; border: 1px solid #ccc; background-color: #f0f0f0; cursor: pointer; }
-    #smart-fill { background-color: #e8dffc; font-weight: bold; }
-    h3, h4 { margin-top: 0; margin-bottom: 10px; }
-    .settings-group { margin-top: 15px; padding-top: 10px; border-top: 1px solid #ccc; }
-    .api-key-input { width: calc(100% - 12px); padding: 5px; margin-bottom: 5px; }
-    .save-button { width: 100%; padding: 5px; font-size: 0.8em;}
+    /* Reset & base */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      width: 300px; 
+      padding: 20px; 
+      background-color: #f9f9f9; 
+      color: #333;
+    }
+
+    h3 {
+      font-size: 1.5em;
+      margin-bottom: 15px;
+      text-align: center;
+      color: #4b0082;
+    }
+
+    h4 {
+      font-size: 1.1em;
+      margin-bottom: 10px;
+      color: #555;
+    }
+
+    /* Buttons */
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 1em;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+    }
+
+    #fill {
+      background-color: #4b0082;
+      color: #fff;
+    }
+
+    #fill:hover {
+      background-color: #37006b;
+    }
+
+    #smart-fill {
+      background-color: #8a2be2;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    #smart-fill:hover {
+      background-color: #6f1fc0;
+    }
+
+    /* Settings groups */
+    .settings-group {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    label {
+      display: flex;
+      align-items: center;
+      font-size: 0.95em;
+      color: #444;
+    }
+
+    input[type="checkbox"] {
+      margin-right: 10px;
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Textarea for API keys */
+    .api-key-input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      resize: none;
+      font-family: monospace;
+      font-size: 0.9em;
+      transition: border-color 0.3s;
+    }
+
+    .api-key-input:focus {
+      border-color: #4b0082;
+      outline: none;
+    }
+
+    /* Save button */
+    .save-button {
+      margin-top: 10px;
+      background-color: #4b0082;
+      color: #fff;
+      font-size: 0.9em;
+      padding: 10px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+    }
+
+    .save-button:hover {
+      background-color: #37006b;
+      transform: translateY(-1px);
+    }
   </style>
 </head>
 <body>
   <h3>Fake Filler</h3>
+
   <button id="fill">Fill with Random Data</button>
   <button id="smart-fill">Smart Fill with AI</button>
 
@@ -25,8 +136,9 @@
   </div>
 
   <div class="settings-group">
-    <label for="api-keys">Gemini API Keys (One per line)</label>
-    <textarea id="api-keys" class="api-key-input" placeholder="Enter API keys, one per line" rows="5"></textarea>
+    <h4>Gemini API Keys</h4>
+    <label for="api-keys">Enter one per line</label>
+    <textarea id="api-keys" class="api-key-input" rows="5" placeholder="Enter API keys, one per line"></textarea>
     <button id="save-keys" class="save-button">Save Keys</button>
   </div>
 
