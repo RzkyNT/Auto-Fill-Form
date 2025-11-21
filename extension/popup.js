@@ -22,6 +22,10 @@ const openAiEndpointInput = document.getElementById("openai-endpoint");
 const openAiModelInput = document.getElementById("openai-model");
 const openAiTokenInput = document.getElementById("openai-token");
 const saveOpenAiButton = document.getElementById("save-openai");
+const geminiSettingsEl = document.getElementById("gemini-settings");
+const openAiSettingsEl = document.getElementById("openai-settings");
+const darkModeToggle = document.getElementById("dark-mode-toggle");
+const htmlRoot = document.documentElement;
 
 // Load all settings on popup open
 document.addEventListener("DOMContentLoaded", () => {
@@ -31,7 +35,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   
   // Load API keys
-  chrome.storage.local.get(["apiKeys", "aiProvider", "openAiConfig"], (result) => {
+  chrome.storage.local.get(["apiKeys", "aiProvider", "openAiConfig", "themeMode"], (result) => {
     if (result.apiKeys && Array.isArray(result.apiKeys)) {
       apiKeysTextarea.value = result.apiKeys.map(item => item.key).join('\n');
     }
@@ -40,12 +44,17 @@ document.addEventListener("DOMContentLoaded", () => {
     providerRadios.forEach(radio => {
       radio.checked = radio.value === provider;
     });
+    updateProviderSections(provider);
 
     const config = result.openAiConfig || {};
     openAiBaseUrlInput.value = config.baseUrl || "";
     openAiEndpointInput.value = config.endpoint || "";
     openAiModelInput.value = config.model || "";
     openAiTokenInput.value = config.token || "";
+
+    const themeMode = result.themeMode || "light";
+    applyTheme(themeMode === "dark");
+    darkModeToggle.checked = themeMode === "dark";
   });
 });
 
@@ -59,9 +68,24 @@ providerRadios.forEach(radio => {
   radio.addEventListener("change", () => {
     if (radio.checked) {
       chrome.storage.local.set({ aiProvider: radio.value });
+      updateProviderSections(radio.value);
     }
   });
 });
+
+function updateProviderSections(provider) {
+  if (provider === "openai") {
+    geminiSettingsEl.classList.add("hidden");
+    openAiSettingsEl.classList.remove("hidden");
+  } else {
+    geminiSettingsEl.classList.remove("hidden");
+    openAiSettingsEl.classList.add("hidden");
+  }
+}
+
+function applyTheme(isDark) {
+  htmlRoot.classList.toggle("dark", isDark);
+}
 
 // Save API keys
 saveKeysButton.addEventListener("click", () => {
@@ -96,4 +120,10 @@ saveOpenAiButton.addEventListener("click", () => {
       saveOpenAiButton.textContent = "Save OpenAI Settings";
     }, 1500);
   });
+});
+
+darkModeToggle.addEventListener("change", () => {
+  const isDark = darkModeToggle.checked;
+  applyTheme(isDark);
+  chrome.storage.local.set({ themeMode: isDark ? "dark" : "light" });
 });

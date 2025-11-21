@@ -8,17 +8,16 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { 
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-      width: 300px; 
-      padding: 20px; 
-      background-color: #f9f9f9; 
-      color: #333;
+      width: 320px; 
+      padding: 22px; 
+      background-color: #f8f7fb; 
+      color: #2b2b2b;
     }
 
     h3 {
-      font-size: 1.5em;
-      margin-bottom: 15px;
-      text-align: center;
-      color: #4b0082;
+      font-size: 1.4em;
+      margin-bottom: 5px;
+      color: #2c0d67;
     }
 
     h4 {
@@ -35,8 +34,10 @@
       border: none;
       border-radius: 6px;
       font-size: 1em;
+      font-weight: 600;
       cursor: pointer;
       transition: background 0.3s, transform 0.2s;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
 
     button:hover {
@@ -44,22 +45,22 @@
     }
 
     #fill {
-      background-color: #4b0082;
+      background-color: #36156f;
       color: #fff;
     }
 
     #fill:hover {
-      background-color: #37006b;
+      background-color: #2b0f58;
     }
 
     #smart-fill {
-      background-color: #8a2be2;
+      background: linear-gradient(135deg, #7b2ce0, #e23c99);
       color: #fff;
       font-weight: bold;
     }
 
     #smart-fill:hover {
-      background-color: #6f1fc0;
+      background: linear-gradient(135deg, #5a1dbf, #c41c81);
     }
 
     /* Settings groups */
@@ -69,6 +70,25 @@
       background-color: #fff;
       border-radius: 8px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .provider-card {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: #f5f0ff;
+      border: 1px solid #ece8ff;
+    }
+
+    .provider-card label {
+      font-weight: 600;
+      gap: 6px;
+    }
+
+    .provider-card p {
+      margin-top: 6px;
+      font-size: 0.85em;
+      color: #3f2d72;
     }
 
     label {
@@ -91,15 +111,16 @@
       margin-top: 5px;
       border-radius: 6px;
       border: 1px solid #ccc;
-      resize: none;
+      resize: vertical;
       font-family: monospace;
       font-size: 0.9em;
       transition: border-color 0.3s;
     }
 
     .api-key-input:focus {
-      border-color: #4b0082;
+      border-color: #36156f;
       outline: none;
+      box-shadow: 0 0 0 2px rgba(54,21,111,0.2);
     }
 
     /* Save button */
@@ -119,10 +140,86 @@
       background-color: #37006b;
       transform: translateY(-1px);
     }
+
+    .hidden {
+      display: none;
+    }
+
+    .theme-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+    }
+
+    .developer-tag {
+      font-size: 0.75em;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #0f4c81;
+      color: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .subhead {
+      font-size: 0.9em;
+      color: #555;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 10px;
+    }
+
+    .dark body {
+      background-color: #0c0c14;
+      color: #f5f5f5;
+    }
+
+    .dark .settings-group {
+      background-color: #14141f;
+      box-shadow: 0 2px 6px rgba(255,255,255,0.08);
+    }
+
+    .dark .api-key-input {
+      background: #1b1b27;
+      border-color: #444;
+      color: #f5f5f5;
+    }
+
+    .dark .provider-card {
+      background: #1a1333;
+      border-color: #31205d;
+    }
+
+    .dark .save-button {
+      background-color: #201146;
+    }
+
+    .dark #fill {
+      background-color: #4b35a1;
+    }
+
+    .dark #smart-fill {
+      background: linear-gradient(135deg, #a54ce3, #f5519b);
+    }
   </style>
 </head>
 <body>
-  <h3>Fake Filler</h3>
+  <div class="header">
+    <div>
+      <h3>Fake Filler</h3>
+      <p class="subhead">Auto-fill forms with Gemini or OpenAI intelligence.</p>
+    </div>
+    <span class="developer-tag">RzkyNT</span>
+  </div>
 
   <button id="fill">Fill with Random Data</button>
   <button id="smart-fill">Smart Fill with AI</button>
@@ -137,24 +234,30 @@
 
   <div class="settings-group">
     <h4>AI Provider</h4>
-    <label>
-      <input type="radio" name="ai-provider" value="gemini" checked />
-      Gemini API (key rotation)
-    </label>
-    <label>
-      <input type="radio" name="ai-provider" value="openai" />
-      OpenAI-compatible (base URL + bearer token)
-    </label>
+    <div class="provider-card">
+      <label>
+        <input type="radio" name="ai-provider" value="gemini" checked />
+        Gemini API (key rotation)
+      </label>
+      <p>Use your Gemini keys with automatic cooldowns.</p>
+    </div>
+    <div class="provider-card">
+      <label>
+        <input type="radio" name="ai-provider" value="openai" />
+        OpenAI-compatible
+      </label>
+      <p>Point to any OpenAI-style proxy (base URL + endpoint + bearer token).</p>
+    </div>
   </div>
 
-  <div class="settings-group">
+  <div id="gemini-settings" class="settings-group provider-settings">
     <h4>Gemini API Keys</h4>
     <label for="api-keys">Enter one per line</label>
     <textarea id="api-keys" class="api-key-input" rows="5" placeholder="Enter API keys, one per line"></textarea>
     <button id="save-keys" class="save-button">Save Keys</button>
   </div>
 
-  <div class="settings-group">
+  <div id="openai-settings" class="settings-group provider-settings hidden">
     <h4>OpenAI Settings</h4>
     <label for="openai-base-url">Base URL</label>
     <input id="openai-base-url" class="api-key-input" type="text" placeholder="https://api.openai.com/v1" />
@@ -165,6 +268,14 @@
     <label for="openai-token">Bearer token</label>
     <textarea id="openai-token" class="api-key-input" rows="3" placeholder="Enter Bearer token"></textarea>
     <button id="save-openai" class="save-button">Save OpenAI Settings</button>
+  </div>
+
+  <div class="settings-group theme-group">
+    <h4>Appearance</h4>
+    <label class="switch">
+      <input type="checkbox" id="dark-mode-toggle" />
+      <span>Dark mode</span>
+    </label>
   </div>
 
   <script src="popup.js"></script>
