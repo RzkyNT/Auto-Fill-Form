@@ -356,119 +356,214 @@ async function doSmartFill() {
   console.log("--- Smart Fill Initialized ---");
   createProgressOverlay();
   let encounteredError = null;
-  const formName = document.title || (window.location.hostname + window.location.pathname);
 
-  const isGForm = window.location.hostname === 'docs.google.com' && window.location.pathname.includes('/forms/');
-  if (!isGForm) {
-    alert("Smart Fill currently only works on Google Forms.");
-    console.warn("Smart Fill aborted: Not a Google Form.");
+  const host = window.location.hostname;
+  const isGForm = host === 'docs.google.com' && window.location.pathname.includes('/forms/');
+  const isWayground = host.includes('wayground.com');
+  const isQuizziz = host.includes('quizziz.com');
+
+  if (!isGForm && !isWayground && !isQuizziz) {
+    alert("Smart Fill currently supports Google Forms, wayground.com, and quizziz.com.");
+    console.warn("Smart Fill aborted: Unsupported host.");
     removeProgressOverlay();
     return;
   }
 
+  try {
+    if (isGForm) {
+      await handleGoogleForms();
+    } else {
+      await handleQuizPlatforms(host);
+    }
+  } catch (error) {
+    encounteredError = error;
+    console.error("Error during Smart Fill:", error);
+    updateProgressOverlay("Error", error.message);
+    finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
+    alert(`An error occurred while using the AI provider: ${error.message}`);
+  } finally {
+    console.log("--- Smart Fill Completed ---");
+    if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
+      updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
+      updateProgressBar(1);
+      setTimeout(removeProgressOverlay, 600);
+    } else {
+      setTimeout(removeProgressOverlay, 1500);
+    }
+  }
+}
+
+async function handleGoogleForms() {
   const questions = document.querySelectorAll('div[role="listitem"]');
   console.log(`Found ${questions.length} question items.`);
   smartFillSession.totalSteps = questions.length;
 
-    for (const [index, q] of questions.entries()) {
-      console.log(`\n--- Processing Question ${index + 1} ---`);
-      updateProgressOverlay(
-        `Reading question ${index + 1}/${questions.length}`,
-        q.querySelector('div[role="heading"]')?.textContent?.trim() || "No label detected"
-      );
-        const questionText = (q.querySelector('div[role="heading"]')?.textContent || '').trim();
-    if (!questionText) {
-      console.warn("Could not find question text for this item. Skipping.");
-      continue;
+  for (const [index, q] of questions.entries()) {
+    if (smartFillSession?.stopRequested) break;
+    try {
+      await processGoogleFormQuestion(q, index, questions.length);
+    } catch (error) {
+      throw error;
     }
-    startHistoryEntry(questionText);
-    console.log(`Question Text: "${questionText}"`);
-
-        try {
-          // Handle multiple choice and checkboxes
-      const choices = q.querySelectorAll('div[role="radio"], div[role="checkbox"]');
-        if (choices.length > 0) {
-        const choiceLabels = Array.from(choices).map(c => c.getAttribute('aria-label') || c.textContent).filter(Boolean);
-        smartFillSession.currentEntry.events = [];
-          if (choiceLabels.length === 0) {
-            console.warn("Found choices but could not extract any labels. Skipping.");
-            continue;
-        }
-        console.log("Detected Choices:", choiceLabels);
-        
-        const prompt = `Question: "${questionText}"\nOptions: [${choiceLabels.join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
-        console.log("Sending Prompt to Background:", prompt);
-        updateProgressOverlay("Consulting AI provider...", choiceLabels.join(", "));
-
-        if (smartFillSession?.stopRequested) {
-          updateProgressOverlay("Stopped", "Pengisian dihentikan oleh pengguna.");
-          break;
-        }
-        const aiAnswer = await getAiResponse(prompt);
-        updateProgressOverlay("Giving AI response...", aiAnswer);
-        console.log(`AI Answer Received: "${aiAnswer}"`);
-        
-        const targetChoice = Array.from(choices).find(c => {
-          const label = (c.getAttribute('aria-label') || c.textContent);
-          // A more robust check: see if the AI answer is a substring of the option label, or vice-versa.
-          return label && (label.toLowerCase().includes(aiAnswer.toLowerCase()) || aiAnswer.toLowerCase().includes(label.toLowerCase()));
-        });
-
-        if (targetChoice) {
-          console.log(`Match found! Clicking choice: "${targetChoice.getAttribute('aria-label') || targetChoice.textContent}"`);
-          const matchedLabel = (targetChoice.getAttribute('aria-label') || targetChoice.textContent || '').trim();
-          targetChoice.click();
-          finalizeHistoryEntry("answered (choice)", matchedLabel || aiAnswer);
-        } else {
-          console.warn(`AI answer "${aiAnswer}" did not clearly match any option.`);
-          console.log("Available options:", choiceLabels);
-          finalizeHistoryEntry("no match", aiAnswer);
-        }
-      }
-      // Handle text input
-      else {
-        const textInput = q.querySelector('input[type="text"], textarea');
-        if (textInput) {
-           console.log("Detected Text Input field.");
-           const prompt = `Provide a concise and appropriate answer for the following question: "${questionText}"`;
-           console.log("Sending Prompt to Background:", prompt);
-           updateProgressOverlay("Analyzing The Answer...", questionText);
-          const aiResponse = await getAiResponse(prompt);
-          updateProgressOverlay("Typing AI answer...", aiResponse);
-          console.log(`AI Answer Received: "${aiResponse}"`);
-          textInput.value = aiResponse;
-          textInput.dispatchEvent(new Event('input', { bubbles: true }));
-          saveSmartFillHistory({
-            formName,
-            question: questionText,
-            answer: aiResponse,
-            status: "answered (text input)",
-            formUrl: window.location.href,
-          });
-          finalizeHistoryEntry("answered (text input)", aiResponse);
-        }
-      }
-      smartFillSession.completedSteps = index + 1;
-      updateProgressBar((index + 1) / Math.max(1, smartFillSession.totalSteps));
-      if (smartFillSession?.stopRequested) break;
-        } catch (error) {
-      encounteredError = error;
-      console.error("Error during Smart Fill for this question:", error);
-      updateProgressOverlay("Error", error.message);
-      finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
-      alert(`An error occurred while using the AI provider: ${error.message}`);
-      break; 
-    }
-        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between questions
-    }
-  console.log("--- Smart Fill Completed ---");
-  if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
-    updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
-    updateProgressBar(1);
-    setTimeout(removeProgressOverlay, 600);
-  } else {
-    setTimeout(removeProgressOverlay, 1500);
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
+}
+
+async function processGoogleFormQuestion(q, index, total) {
+  console.log(`\n--- Processing Question ${index + 1} ---`);
+  updateProgressOverlay(
+    `Reading question ${index + 1}/${total}`,
+    q.querySelector('div[role="heading"]')?.textContent?.trim() || "No label detected"
+  );
+  const questionText = (q.querySelector('div[role="heading"]')?.textContent || '').trim();
+  if (!questionText) {
+    console.warn("Could not find question text for this item. Skipping.");
+    return;
+  }
+  startHistoryEntry(questionText);
+  console.log(`Question Text: "${questionText}"`);
+
+  try {
+    await fillGoogleFormQuestion(q, questionText);
+  } catch (error) {
+    finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
+    throw error;
+  }
+
+  smartFillSession.completedSteps = index + 1;
+  updateProgressBar((index + 1) / Math.max(1, smartFillSession.totalSteps));
+  if (smartFillSession?.stopRequested) {
+    updateProgressOverlay("Stopped", "Pengisian dihentikan oleh pengguna.");
+  }
+}
+
+async function fillGoogleFormQuestion(q, questionText) {
+  try {
+    const choices = q.querySelectorAll('div[role="radio"], div[role="checkbox"]');
+    if (choices.length > 0) {
+      const choiceLabels = Array.from(choices).map(c => (c.getAttribute('aria-label') || c.textContent || "").trim()).filter(Boolean);
+      smartFillSession.currentEntry.events = [];
+      if (choiceLabels.length === 0) {
+        console.warn("Found choices but could not extract any labels. Skipping.");
+        return;
+      }
+      console.log("Detected Choices:", choiceLabels);
+      const prompt = `Question: "${questionText}"\nOptions: [${choiceLabels.join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
+      console.log("Sending Prompt to Background:", prompt);
+      updateProgressOverlay("Consulting AI provider...", choiceLabels.join(", "));
+      if (smartFillSession?.stopRequested) {
+        throw new Error("User stopped the smart fill.");
+      }
+      const aiAnswer = await getAiResponse(prompt);
+      updateProgressOverlay("Matching AI response...", aiAnswer);
+      console.log(`AI Answer Received: "${aiAnswer}"`);
+      const targetChoice = Array.from(choices).find(c => {
+        const label = (c.getAttribute('aria-label') || c.textContent || "").trim();
+        return label && (label.toLowerCase().includes(aiAnswer.toLowerCase()) || aiAnswer.toLowerCase().includes(label.toLowerCase()));
+      });
+      if (targetChoice) {
+        const matchedLabel = (targetChoice.getAttribute('aria-label') || targetChoice.textContent || "").trim();
+        targetChoice.click();
+        finalizeHistoryEntry("answered (choice)", matchedLabel || aiAnswer);
+      } else {
+        finalizeHistoryEntry("no match", aiAnswer);
+      }
+      return;
+    }
+
+    const textInput = q.querySelector('input[type="text"], textarea');
+    if (textInput) {
+      console.log("Detected Text Input field.");
+      const prompt = `Provide a concise and appropriate answer for the following question: "${questionText}"`;
+      console.log("Sending Prompt to Background:", prompt);
+      updateProgressOverlay("Consulting AI provider...", questionText);
+      const aiResponse = await getAiResponse(prompt);
+      updateProgressOverlay("Typing AI answer...", aiResponse);
+      console.log(`AI Answer Received: "${aiResponse}"`);
+      textInput.value = aiResponse;
+      textInput.dispatchEvent(new Event('input', { bubbles: true }));
+      finalizeHistoryEntry("answered (text input)", aiResponse);
+    }
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function handleQuizPlatforms(host) {
+  const questionText = extractQuizQuestion(host);
+  if (!questionText) {
+    throw new Error("Tidak dapat menemukan pertanyaan pada halaman ini.");
+  }
+  smartFillSession.totalSteps = 1;
+  startHistoryEntry(questionText);
+  updateProgressOverlay("Listening to question", questionText);
+  const options = extractQuizOptions(host);
+  if (!options.length) {
+    throw new Error("Tidak dapat menemukan opsi jawaban.");
+  }
+  const prompt = `Question: "${questionText}"\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
+  console.log("Sending Prompt to Background:", prompt);
+  updateProgressOverlay("Consulting AI provider...", questionText);
+  const aiAnswer = await getAiResponse(prompt);
+  updateProgressOverlay("Matching AI response...", aiAnswer);
+  const target = matchOption(options, aiAnswer);
+  if (target) {
+    target.element.click();
+    finalizeHistoryEntry("answered (quiz)", target.label);
+  } else {
+    finalizeHistoryEntry("no match", aiAnswer);
+  }
+  updateProgressBar(1);
+}
+
+function matchOption(options, aiAnswer) {
+  const normalizedAnswer = aiAnswer?.toLowerCase().trim();
+  if (!normalizedAnswer) return null;
+  for (const option of options) {
+    const normalizedLabel = option.label?.toLowerCase().trim();
+    if (!normalizedLabel) continue;
+    if (normalizedLabel === normalizedAnswer || normalizedLabel.includes(normalizedAnswer) || normalizedAnswer.includes(normalizedLabel)) {
+      return option;
+    }
+  }
+  return null;
+}
+
+function extractQuizQuestion(host) {
+  if (host.includes("wayground.com")) {
+    const element = document.querySelector('[data-testid="question-container-text"] p');
+    return element ? element.textContent.trim() : null;
+  }
+  if (host.includes("quizziz.com")) {
+    const element = document.querySelector('[data-testid="question-title"]');
+    return element ? element.textContent.trim() : null;
+  }
+  return null;
+}
+
+function extractQuizOptions(host) {
+  const options = [];
+  if (host.includes("wayground.com")) {
+    const nodes = document.querySelectorAll('.option');
+    nodes.forEach(node => {
+      const labelElement = node.querySelector('#optionText p');
+      const label = labelElement ? labelElement.textContent.trim() : "";
+      const element = node;
+      if (label) options.push({ label, element });
+    });
+    return options;
+  }
+
+  if (host.includes("quizziz.com")) {
+    const nodes = document.querySelectorAll('[data-test="option-text"]');
+    nodes.forEach(node => {
+      const label = node.textContent.trim();
+      const trigger = node.closest('[role="button"], .option');
+      if (label && trigger) options.push({ label, element: trigger });
+    });
+  }
+
+  return options;
 }
 
 /**
