@@ -2,6 +2,8 @@
 window.addEventListener("fakeFiller:run", doFakeFill);
 window.addEventListener("fakeFiller:smartFill", doSmartFill);
 
+let smartFillSession = null;
+
 // Auto-run if enabled
 window.addEventListener('load', () => {
   chrome.storage.sync.get(["autoRun"], (result) => {
@@ -15,10 +17,10 @@ async function doFakeFill() {
   const isGForm = window.location.hostname === 'docs.google.com' && window.location.pathname.includes('/forms/');
   
   if (isGForm) {
-    console.log("Fake Filler Running (Google Form Mode)...");
+    console.log("Smart Filler Running (Google Form Mode)...");
     await doFakeFillGForm();
   } else {
-    console.log("Fake Filler Running (Standard Mode)...");
+    console.log("Smart Filler Running (Standard Mode)...");
     await doFakeFillStandard();
   }
 }
@@ -132,32 +134,203 @@ function getAiResponse(prompt) {
 }
 
 /**
+ * Creates an overlay that exposes the current smart-fill progress.
+ */
+function createProgressOverlay() {
+  removeProgressOverlay();
+  smartFillSession = {
+    stopRequested: false,
+    totalSteps: 0,
+    completedSteps: 0,
+  };
+
+  const overlay = document.createElement("div");
+  overlay.id = "fake-filler-overlay";
+  overlay.innerHTML = `
+    <div class="overlay-card">
+      <div class="overlay-header">
+        <div>
+          <div class="overlay-title">Smart Filler AI</div>
+          <div class="overlay-detail">Memperhatikan instruksi...</div>
+        </div>
+        <button type="button" class="overlay-stop-button">Stop</button>
+      </div>
+      <div class="overlay-status">Preparing smart fill...</div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: 0%;"></div>
+      </div>
+      <ul class="overlay-history"></ul>
+    </div>
+  `;
+  const style = document.createElement("style");
+  style.id = "fake-filler-overlay-style";
+  style.textContent = `
+    #fake-filler-overlay {
+      position: fixed;
+      inset: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2147483647;
+      background: rgba(0,0,0,0.5);
+    }
+    .overlay-card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 20px;
+      max-width: 360px;
+      width: 100%;
+      box-shadow: 0 14px 38px rgba(0,0,0,0.35);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: left;
+    }
+    .overlay-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .overlay-title {
+      font-size: 1.2em;
+      font-weight: 700;
+      color: #2c0d67;
+    }
+    .overlay-detail {
+      font-size: 0.85em;
+      color: #3b3b3b;
+    }
+    .overlay-status {
+      font-size: 1em;
+      font-weight: 600;
+      color: #0f1d38;
+      margin-bottom: 12px;
+    }
+    .overlay-history {
+      list-style: none;
+      padding: 0;
+      margin: 12px 0 0 0;
+      max-height: 160px;
+      overflow-y: auto;
+      border-top: 1px solid #eceef2;
+      padding-top: 8px;
+    }
+    .overlay-history li {
+      margin-bottom: 6px;
+      font-size: 0.85em;
+      color: #222;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #eceef2;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(135deg, #7b2ce0, #e23c99);
+      transition: width 0.2s ease;
+      width: 0;
+    }
+    .overlay-stop-button {
+      background: #ff4d60;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .overlay-stop-button:hover {
+      background: #d43a4c;
+    }
+  `;
+  document.body.appendChild(style);
+  document.body.appendChild(overlay);
+  const stopButton = overlay.querySelector(".overlay-stop-button");
+  stopButton.addEventListener("click", () => {
+    if (smartFillSession) {
+      smartFillSession.stopRequested = true;
+      updateProgressOverlay("Cancellation requested", "Tunggu sampai AI berhenti");
+    }
+  });
+}
+
+function updateProgressOverlay(status, detail) {
+  const overlay = document.getElementById("fake-filler-overlay");
+  if (!overlay) return;
+  const statusEl = overlay.querySelector(".overlay-status");
+  if (statusEl && status) statusEl.textContent = status;
+  appendProgressHistory(status, detail);
+}
+
+function appendProgressHistory(status, detail) {
+  const overlay = document.getElementById("fake-filler-overlay");
+  if (!overlay) return;
+  const historyEl = overlay.querySelector(".overlay-history");
+  if (!historyEl) return;
+  const entry = document.createElement("li");
+  entry.innerHTML = `<strong>${status}</strong>${detail ? ` — ${detail}` : ""}`;
+  historyEl.prepend(entry);
+  while (historyEl.children.length > 6) {
+    historyEl.removeChild(historyEl.lastChild);
+  }
+}
+
+function updateProgressBar(ratio) {
+  const overlay = document.getElementById("fake-filler-overlay");
+  if (!overlay) return;
+  const fill = overlay.querySelector(".progress-fill");
+  if (!fill) return;
+  const percent = Math.min(100, Math.max(0, ratio * 100));
+  fill.style.width = `${percent}%`;
+}
+
+function removeProgressOverlay() {
+  const overlay = document.getElementById("fake-filler-overlay");
+  const style = document.getElementById("fake-filler-overlay-style");
+  if (overlay) overlay.remove();
+  if (style) style.remove();
+  smartFillSession = null;
+}
+
+/**
  * Fills forms intelligently using Gemini AI.
  */
 async function doSmartFill() {
   console.log("--- Smart Fill Initialized ---");
+  createProgressOverlay();
+  let encounteredError = null;
 
   const isGForm = window.location.hostname === 'docs.google.com' && window.location.pathname.includes('/forms/');
   if (!isGForm) {
     alert("Smart Fill currently only works on Google Forms.");
     console.warn("Smart Fill aborted: Not a Google Form.");
+    removeProgressOverlay();
     return;
   }
 
   const questions = document.querySelectorAll('div[role="listitem"]');
   console.log(`Found ${questions.length} question items.`);
+  smartFillSession.totalSteps = questions.length;
 
-  for (const [index, q] of questions.entries()) {
-    console.log(`\n--- Processing Question ${index + 1} ---`);
-    const questionText = (q.querySelector('div[role="heading"]')?.textContent || '').trim();
+    for (const [index, q] of questions.entries()) {
+      console.log(`\n--- Processing Question ${index + 1} ---`);
+      updateProgressOverlay(
+        `Reading question ${index + 1}/${questions.length}`,
+        q.querySelector('div[role="heading"]')?.textContent?.trim() || "No label detected"
+      );
+      const questionText = (q.querySelector('div[role="heading"]')?.textContent || '').trim();
     if (!questionText) {
       console.warn("Could not find question text for this item. Skipping.");
       continue;
     }
     console.log(`Question Text: "${questionText}"`);
 
-    try {
-      // Handle multiple choice and checkboxes
+        try {
+          // Handle multiple choice and checkboxes
       const choices = q.querySelectorAll('div[role="radio"], div[role="checkbox"]');
       if (choices.length > 0) {
         const choiceLabels = Array.from(choices).map(c => c.getAttribute('aria-label') || c.textContent).filter(Boolean);
@@ -169,8 +342,14 @@ async function doSmartFill() {
         
         const prompt = `Question: "${questionText}"\nOptions: [${choiceLabels.join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
         console.log("Sending Prompt to Background:", prompt);
+        updateProgressOverlay("Consulting AI provider...", choiceLabels.join(", "));
 
+        if (smartFillSession?.stopRequested) {
+          updateProgressOverlay("Stopped", "Pengisian dihentikan oleh pengguna.");
+          break;
+        }
         const aiAnswer = await getAiResponse(prompt);
+        updateProgressOverlay("Matching AI response...", aiAnswer);
         console.log(`AI Answer Received: "${aiAnswer}"`);
         
         const targetChoice = Array.from(choices).find(c => {
@@ -194,19 +373,33 @@ async function doSmartFill() {
            console.log("Detected Text Input field.");
            const prompt = `Provide a concise and appropriate answer for the following question: "${questionText}"`;
            console.log("Sending Prompt to Background:", prompt);
+           updateProgressOverlay("Consulting AI provider...", questionText);
            textInput.value = await getAiResponse(prompt);
+           updateProgressOverlay("Typing AI answer...", textInput.value);
            console.log(`AI Answer Received: "${textInput.value}"`);
            textInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
       }
-    } catch (error) {
+      smartFillSession.completedSteps = index + 1;
+      updateProgressBar((index + 1) / Math.max(1, smartFillSession.totalSteps));
+      if (smartFillSession?.stopRequested) break;
+        } catch (error) {
+      encounteredError = error;
       console.error("Error during Smart Fill for this question:", error);
+      updateProgressOverlay("Error", error.message);
       alert(`An error occurred while using the AI provider: ${error.message}`);
       break; 
     }
-    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between questions
-  }
+  await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between questions
+}
   console.log("--- Smart Fill Completed ---");
+  if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
+    updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
+    updateProgressBar(1);
+    setTimeout(removeProgressOverlay, 600);
+  } else {
+    setTimeout(removeProgressOverlay, 1500);
+  }
 }
 
 /**

@@ -10,7 +10,7 @@ const FakeGen = {
       const words = await response.json();
       return words.join(' ');
     } catch (error) {
-      console.warn("Fake Filler: Could not fetch random words, falling back to basic strings.", error);
+      console.warn("Smart Filler: Could not fetch random words, falling back to basic strings.", error);
       // Fallback to old method if API fails
       let result = '';
       for (let i = 0; i < count; i++) {
