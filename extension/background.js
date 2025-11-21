@@ -1,4 +1,4 @@
-// This script handles the Gemini API call with key rotation.
+// This script handles smart fill requests to Gemini or OpenAI depending on user settings.
 
 console.log("Background service worker started.");
 
@@ -27,26 +27,20 @@ function extractGeminiText(res) {
 
   const cand = res.candidates[0];
 
-  // 1. Newest Gemini format: { candidates[0].content: { role, parts } }
   if (cand.content?.parts?.length) {
     const part = cand.content.parts.find(p => p.text);
     if (part?.text) return part.text;
   }
 
-  // 2. Sometimes "content" is an array of parts
   if (Array.isArray(cand.content)) {
     for (const part of cand.content) {
       if (part?.text) return part.text;
     }
   }
 
-  // 3. Older models used output_text
   if (cand.output_text) return cand.output_text;
-
-  // 4. Some return { text: "...." }
   if (cand.text) return cand.text;
 
-  // 5. Fallback: flatten entire JSON and search for any string-like text
   const json = JSON.stringify(res);
   const match = json.match(/"text"\s*:\s*"([^"]+)"/);
   if (match) return match[1];
@@ -54,17 +48,65 @@ function extractGeminiText(res) {
   return null;
 }
 
-async function handleApiRequest(request, sendResponse) {
-  console.log("--- [DEBUG] handleApiRequest: START ---");
+function normalizeOpenAiUrl(baseUrl, endpoint) {
+  const trimmedEndpoint = endpoint?.trim();
+  if (!trimmedEndpoint) return null;
+
+  if (trimmedEndpoint.toLowerCase().startsWith("http")) {
+    return trimmedEndpoint;
+  }
+
+  const cleanBase = baseUrl?.trim().replace(/\/+$/, "");
+  const cleanEndpoint = trimmedEndpoint.replace(/^\/+/, "");
+  if (!cleanBase) return trimmedEndpoint;
+
+  return `${cleanBase}/${cleanEndpoint}`;
+}
+
+function extractOpenAiText(res) {
+  if (!res) return null;
+
+  if (Array.isArray(res.output)) {
+    for (const chunk of res.output) {
+      if (Array.isArray(chunk.content)) {
+        for (const entry of chunk.content) {
+          if (typeof entry.text === "string") return entry.text;
+        }
+      }
+      if (typeof chunk.text === "string") return chunk.text;
+    }
+  }
+
+  if (res.output_text) return res.output_text;
+  if (typeof res.text === "string") return res.text;
+
+  if (Array.isArray(res.choices)) {
+    for (const choice of res.choices) {
+      if (choice.message?.content) {
+        if (typeof choice.message.content === "string") return choice.message.content;
+        if (Array.isArray(choice.message.content)) {
+          const part = choice.message.content.find(item => typeof item.text === "string");
+          if (part?.text) return part.text;
+        }
+      }
+      if (typeof choice.text === "string") return choice.text;
+    }
+  }
+
+  return null;
+}
+
+async function callGemini(request, sendResponse) {
+  console.log("--- [DEBUG] callGemini: START ---");
   const { apiKeys } = await new Promise(resolve => chrome.storage.local.get({ apiKeys: [] }, resolve));
 
   if (!apiKeys || apiKeys.length === 0) {
-    console.error("--- [DEBUG] handleApiRequest: END. No API keys configured. ---");
-    sendResponse({ error: "No API keys configured." });
+    console.error("--- [DEBUG] callGemini: No API keys configured. ---");
+    sendResponse({ error: "No Gemini API keys configured." });
     return;
   }
 
-  console.log(`--- [DEBUG] handleApiRequest: Found ${apiKeys.length} keys. Shuffling...`);
+  console.log(`--- [DEBUG] callGemini: ${apiKeys.length} keys available. Shuffling...`);
   const shuffledKeys = [...apiKeys];
   shuffle(shuffledKeys);
 
@@ -73,12 +115,12 @@ async function handleApiRequest(request, sendResponse) {
   for (const apiKey of shuffledKeys) {
     const now = Date.now();
     if (apiKey.cooldownUntil && apiKey.cooldownUntil > now) {
-      console.log(`--- [DEBUG] handleApiRequest: Key ...${apiKey.key.slice(-4)} is on cooldown until ${new Date(apiKey.cooldownUntil).toLocaleTimeString()}. Skipping.`);
+      console.log(`--- [DEBUG] callGemini: Key ...${apiKey.key.slice(-4)} on cooldown until ${new Date(apiKey.cooldownUntil).toLocaleTimeString()}. Skipping.`);
       continue;
     }
 
     const activeKey = apiKey.key;
-    console.log(`--- [DEBUG] handleApiRequest: Loop iteration. Trying key ending in ...${activeKey.slice(-4)}`);
+    console.log(`--- [DEBUG] callGemini: Trying key ending in ...${activeKey.slice(-4)}`);
 
     const API_URL =
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`;
@@ -111,8 +153,8 @@ async function handleApiRequest(request, sendResponse) {
 
       if (!response.ok) {
         const errorMessage = data.error?.message || `HTTP error! status: ${response.status}`;
-        console.warn(`--- [DEBUG] handleApiRequest: API Error for key ...${activeKey.slice(-4)}. Status: ${response.status}. Response Body:`, data);
-        console.log("--- [DEBUG] handleApiRequest: Trying next available key...");
+        console.warn(`--- [DEBUG] callGemini: API Error for key ...${activeKey.slice(-4)}. Status: ${response.status}.`, data);
+        console.log("--- [DEBUG] callGemini: Trying next key...");
         setApiKeyCooldown(activeKey, 60);
         lastError = errorMessage;
         continue;
@@ -120,35 +162,119 @@ async function handleApiRequest(request, sendResponse) {
 
       const extracted = extractGeminiText(data);
       if (extracted === null) {
-        lastError = "Could not extract text from API response.";
-        console.warn(`--- [DEBUG] handleApiRequest: Error with key ...${activeKey.slice(-4)}: ${lastError} RAW:`, data);
-        console.log("--- [DEBUG] handleApiRequest: Trying next available key...");
+        lastError = "Could not extract text from Gemini response.";
+        console.warn(`--- [DEBUG] callGemini: Parsing error for key ...${activeKey.slice(-4)}.`, data);
+        console.log("--- [DEBUG] callGemini: Trying next key...");
         setApiKeyCooldown(activeKey, 60);
         continue;
       }
 
       const cleanedText = extracted.trim().replace(/^"|"$/g, "").replace(/\.$/, "");
-      console.log(`--- [DEBUG] handleApiRequest: Success with key ...${activeKey.slice(-4)}. Sending response.`);
-      console.log("--- [DEBUG] handleApiRequest: END ---");
+      console.log(`--- [DEBUG] callGemini: Success with key ...${activeKey.slice(-4)}.`);
       sendResponse({ answer: cleanedText });
       return;
 
     } catch (err) {
-      console.error(`--- [DEBUG] handleApiRequest: Network/fetch error for key ...${activeKey.slice(-4)}. Error:`, err);
-      console.log("--- [DEBUG] handleApiRequest: Trying next available key...");
-      lastError = err.message;
+      console.error(`--- [DEBUG] callGemini: Fetch error for key ...${activeKey.slice(-4)}.`, err);
       setApiKeyCooldown(activeKey, 60);
+      lastError = err.message;
     }
   }
 
-  console.error("--- [DEBUG] handleApiRequest: END. All keys failed. ---");
-  sendResponse({ error: `All API keys failed. Last error: ${lastError || "Unknown error. Check background script logs."}` });
+  console.error("--- [DEBUG] callGemini:All keys failed. ---");
+  sendResponse({ error: `All Gemini API keys failed. Last error: ${lastError || "Unknown error."}` });
+}
+
+async function callOpenAi(request, sendResponse, config) {
+  console.log("--- [DEBUG] callOpenAi: START ---");
+
+  const { baseUrl, endpoint, model, token } = config || {};
+  if (!baseUrl || !endpoint || !model || !token) {
+    sendResponse({ error: "OpenAI configuration is incomplete. Please set base URL, endpoint, model, and bearer token." });
+    return;
+  }
+
+  const url = normalizeOpenAiUrl(baseUrl, endpoint);
+  const body = { model };
+
+  if (endpoint.toLowerCase().includes("responses")) {
+    body.input = request.prompt + "\n\nRespond ONLY with the correct option.";
+  } else {
+    body.messages = [
+      {
+        role: "user",
+        content: request.prompt + "\n\nRespond ONLY with the correct option.",
+      },
+    ];
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const textBody = await response.text();
+    let data = null;
+    if (textBody) {
+      try {
+        data = JSON.parse(textBody);
+      } catch (parseError) {
+        console.warn("--- [DEBUG] callOpenAi: Failed to parse JSON response", parseError, textBody);
+        if (!response.ok) {
+          sendResponse({ error: textBody || `HTTP error! status: ${response.status}` });
+          return;
+        }
+        sendResponse({ error: "OpenAI returned invalid JSON." });
+        return;
+      }
+    }
+
+    if (!response.ok) {
+      const errorMessage = data?.error?.message || textBody || `HTTP error! status: ${response.status}`;
+      console.warn("--- [DEBUG] callOpenAi: API error", { status: response.status, body: data || textBody });
+      sendResponse({ error: errorMessage });
+      return;
+    }
+
+    const extracted = extractOpenAiText(data);
+    if (!extracted) {
+      console.warn("--- [DEBUG] callOpenAi: Unable to extract response text", data);
+      sendResponse({ error: "Could not parse OpenAI response." });
+      return;
+    }
+
+    const cleanedText = extracted.trim().replace(/^"|"$/g, "").replace(/\.$/, "");
+    console.log("-- [DEBUG] callOpenAi: Success.");
+    sendResponse({ answer: cleanedText });
+  } catch (err) {
+    console.error("--- [DEBUG] callOpenAi: Network/fetch error", err);
+    sendResponse({ error: err.message });
+  }
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "callGeminiApi") {
-    console.log("--- Background: Received request to call Gemini API ---");
-    handleApiRequest(request, sendResponse);
-    return true;
-  }
+  if (request.action !== "callAiApi") return;
+
+  console.log("--- Background: Received request to call AI API ---");
+  chrome.storage.local.get(
+    {
+      aiProvider: "gemini",
+      openAiConfig: {},
+      apiKeys: [],
+    },
+    (storage) => {
+      if (storage.aiProvider === "openai") {
+        callOpenAi(request, sendResponse, storage.openAiConfig);
+      } else {
+        callGemini(request, sendResponse);
+      }
+    }
+  );
+
+  return true;
 });

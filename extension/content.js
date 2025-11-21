@@ -112,13 +112,13 @@ async function doFakeFillGForm() {
 }
 
 /**
- * Sends a prompt to the background service worker to call the Gemini API.
+ * Sends a prompt to the background service worker to call the configured AI provider.
  * @param {string} prompt The prompt to send to the AI.
  * @returns {Promise<string>} A promise that resolves with the AI's answer.
  */
 function getAiResponse(prompt) {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({ action: "callGeminiApi", prompt }, (response) => {
+    chrome.runtime.sendMessage({ action: "callAiApi", prompt }, (response) => {
       if (chrome.runtime.lastError) {
         // Handle errors from the extension runtime itself
         return reject(new Error(chrome.runtime.lastError.message));
@@ -201,7 +201,7 @@ async function doSmartFill() {
       }
     } catch (error) {
       console.error("Error during Smart Fill for this question:", error);
-      alert(`An error occurred while using the Gemini API: ${error.message}`);
+      alert(`An error occurred while using the AI provider: ${error.message}`);
       break; 
     }
     await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between questions

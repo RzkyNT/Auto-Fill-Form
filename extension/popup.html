@@ -136,10 +136,35 @@
   </div>
 
   <div class="settings-group">
+    <h4>AI Provider</h4>
+    <label>
+      <input type="radio" name="ai-provider" value="gemini" checked />
+      Gemini API (key rotation)
+    </label>
+    <label>
+      <input type="radio" name="ai-provider" value="openai" />
+      OpenAI-compatible (base URL + bearer token)
+    </label>
+  </div>
+
+  <div class="settings-group">
     <h4>Gemini API Keys</h4>
     <label for="api-keys">Enter one per line</label>
     <textarea id="api-keys" class="api-key-input" rows="5" placeholder="Enter API keys, one per line"></textarea>
     <button id="save-keys" class="save-button">Save Keys</button>
+  </div>
+
+  <div class="settings-group">
+    <h4>OpenAI Settings</h4>
+    <label for="openai-base-url">Base URL</label>
+    <input id="openai-base-url" class="api-key-input" type="text" placeholder="https://api.openai.com/v1" />
+    <label for="openai-endpoint">Endpoint path</label>
+    <input id="openai-endpoint" class="api-key-input" type="text" placeholder="chat/completions" />
+    <label for="openai-model">Model</label>
+    <input id="openai-model" class="api-key-input" type="text" placeholder="gpt-4o-mini" />
+    <label for="openai-token">Bearer token</label>
+    <textarea id="openai-token" class="api-key-input" rows="3" placeholder="Enter Bearer token"></textarea>
+    <button id="save-openai" class="save-button">Save OpenAI Settings</button>
   </div>
 
   <script src="popup.js"></script>
