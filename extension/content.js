@@ -264,6 +264,7 @@ function updateProgressOverlay(status, detail) {
   const statusEl = overlay.querySelector(".overlay-status");
   if (statusEl && status) statusEl.textContent = status;
   appendProgressHistory(status, detail);
+  recordHistoryEvent(status, detail);
 }
 
 function appendProgressHistory(status, detail) {
@@ -276,6 +277,19 @@ function appendProgressHistory(status, detail) {
   historyEl.prepend(entry);
   while (historyEl.children.length > 6) {
     historyEl.removeChild(historyEl.lastChild);
+  }
+}
+
+function recordHistoryEvent(status, detail) {
+  if (!smartFillSession?.currentEntry) return;
+  smartFillSession.currentEntry.events = smartFillSession.currentEntry.events || [];
+  smartFillSession.currentEntry.events.push({
+    label: status,
+    detail: detail || "",
+    timestamp: Date.now(),
+  });
+  if (smartFillSession.currentEntry.events.length > 12) {
+    smartFillSession.currentEntry.events.shift();
   }
 }
 
@@ -296,6 +310,45 @@ function removeProgressOverlay() {
   smartFillSession = null;
 }
 
+function startHistoryEntry(questionText) {
+  if (!smartFillSession) return;
+  smartFillSession.currentEntry = {
+    formName: document.title || window.location.hostname,
+    formUrl: window.location.href,
+    question: questionText,
+    answer: "",
+    status: "pending",
+    timestamp: Date.now(),
+    events: [],
+  };
+}
+
+function finalizeHistoryEntry(status, answer) {
+  if (!smartFillSession?.currentEntry) return;
+  smartFillSession.currentEntry.status = status;
+  smartFillSession.currentEntry.answer = answer || smartFillSession.currentEntry.answer;
+  smartFillSession.currentEntry.timestamp = Date.now();
+  saveSmartFillHistory(smartFillSession.currentEntry);
+  smartFillSession.currentEntry = null;
+}
+
+function saveSmartFillHistory(entry) {
+  const record = {
+    formName: entry.formName || "",
+    formUrl: entry.formUrl || window.location.href,
+    question: entry.question || "",
+    answer: entry.answer || "",
+    status: entry.status || "answered",
+    timestamp: entry.timestamp || Date.now(),
+    events: entry.events || [],
+  };
+
+  chrome.storage.local.get({ smartFillHistory: [] }, (result) => {
+    const history = [record, ...result.smartFillHistory].slice(0, 40);
+    chrome.storage.local.set({ smartFillHistory: history });
+  });
+}
+
 /**
  * Fills forms intelligently using Gemini AI.
  */
@@ -303,6 +356,7 @@ async function doSmartFill() {
   console.log("--- Smart Fill Initialized ---");
   createProgressOverlay();
   let encounteredError = null;
+  const formName = document.title || (window.location.hostname + window.location.pathname);
 
   const isGForm = window.location.hostname === 'docs.google.com' && window.location.pathname.includes('/forms/');
   if (!isGForm) {
@@ -322,21 +376,23 @@ async function doSmartFill() {
         `Reading question ${index + 1}/${questions.length}`,
         q.querySelector('div[role="heading"]')?.textContent?.trim() || "No label detected"
       );
-      const questionText = (q.querySelector('div[role="heading"]')?.textContent || '').trim();
+        const questionText = (q.querySelector('div[role="heading"]')?.textContent || '').trim();
     if (!questionText) {
       console.warn("Could not find question text for this item. Skipping.");
       continue;
     }
+    startHistoryEntry(questionText);
     console.log(`Question Text: "${questionText}"`);
 
         try {
           // Handle multiple choice and checkboxes
       const choices = q.querySelectorAll('div[role="radio"], div[role="checkbox"]');
-      if (choices.length > 0) {
+        if (choices.length > 0) {
         const choiceLabels = Array.from(choices).map(c => c.getAttribute('aria-label') || c.textContent).filter(Boolean);
-        if (choiceLabels.length === 0) {
-          console.warn("Found choices but could not extract any labels. Skipping.");
-          continue;
+        smartFillSession.currentEntry.events = [];
+          if (choiceLabels.length === 0) {
+            console.warn("Found choices but could not extract any labels. Skipping.");
+            continue;
         }
         console.log("Detected Choices:", choiceLabels);
         
@@ -349,7 +405,7 @@ async function doSmartFill() {
           break;
         }
         const aiAnswer = await getAiResponse(prompt);
-        updateProgressOverlay("Matching AI response...", aiAnswer);
+        updateProgressOverlay("Giving AI response...", aiAnswer);
         console.log(`AI Answer Received: "${aiAnswer}"`);
         
         const targetChoice = Array.from(choices).find(c => {
@@ -360,10 +416,13 @@ async function doSmartFill() {
 
         if (targetChoice) {
           console.log(`Match found! Clicking choice: "${targetChoice.getAttribute('aria-label') || targetChoice.textContent}"`);
+          const matchedLabel = (targetChoice.getAttribute('aria-label') || targetChoice.textContent || '').trim();
           targetChoice.click();
+          finalizeHistoryEntry("answered (choice)", matchedLabel || aiAnswer);
         } else {
           console.warn(`AI answer "${aiAnswer}" did not clearly match any option.`);
           console.log("Available options:", choiceLabels);
+          finalizeHistoryEntry("no match", aiAnswer);
         }
       }
       // Handle text input
@@ -373,11 +432,20 @@ async function doSmartFill() {
            console.log("Detected Text Input field.");
            const prompt = `Provide a concise and appropriate answer for the following question: "${questionText}"`;
            console.log("Sending Prompt to Background:", prompt);
-           updateProgressOverlay("Consulting AI provider...", questionText);
-           textInput.value = await getAiResponse(prompt);
-           updateProgressOverlay("Typing AI answer...", textInput.value);
-           console.log(`AI Answer Received: "${textInput.value}"`);
-           textInput.dispatchEvent(new Event('input', { bubbles: true }));
+           updateProgressOverlay("Analyzing The Answer...", questionText);
+          const aiResponse = await getAiResponse(prompt);
+          updateProgressOverlay("Typing AI answer...", aiResponse);
+          console.log(`AI Answer Received: "${aiResponse}"`);
+          textInput.value = aiResponse;
+          textInput.dispatchEvent(new Event('input', { bubbles: true }));
+          saveSmartFillHistory({
+            formName,
+            question: questionText,
+            answer: aiResponse,
+            status: "answered (text input)",
+            formUrl: window.location.href,
+          });
+          finalizeHistoryEntry("answered (text input)", aiResponse);
         }
       }
       smartFillSession.completedSteps = index + 1;
@@ -387,11 +455,12 @@ async function doSmartFill() {
       encounteredError = error;
       console.error("Error during Smart Fill for this question:", error);
       updateProgressOverlay("Error", error.message);
+      finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
       alert(`An error occurred while using the AI provider: ${error.message}`);
       break; 
     }
-  await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between questions
-}
+        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between questions
+    }
   console.log("--- Smart Fill Completed ---");
   if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
     updateProgressOverlay("Smart fill complete", "Smart form filling completed!");

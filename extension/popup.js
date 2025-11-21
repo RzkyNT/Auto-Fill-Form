@@ -26,6 +26,8 @@ const geminiSettingsEl = document.getElementById("gemini-settings");
 const openAiSettingsEl = document.getElementById("openai-settings");
 const darkModeToggle = document.getElementById("dark-mode-toggle");
 const htmlRoot = document.documentElement;
+const historyList = document.getElementById("history-list");
+const clearHistoryButton = document.getElementById("clear-history");
 
 // Load all settings on popup open
 document.addEventListener("DOMContentLoaded", () => {
@@ -55,6 +57,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const themeMode = result.themeMode || "light";
     applyTheme(themeMode === "dark");
     darkModeToggle.checked = themeMode === "dark";
+    renderHistory(result.smartFillHistory || []);
   });
 });
 
@@ -127,3 +130,40 @@ darkModeToggle.addEventListener("change", () => {
   applyTheme(isDark);
   chrome.storage.local.set({ themeMode: isDark ? "dark" : "light" });
 });
+
+clearHistoryButton.addEventListener("click", () => {
+  chrome.storage.local.set({ smartFillHistory: [] }, () => {
+    renderHistory([]);
+  });
+});
+
+function renderHistory(history) {
+  if (!historyList) return;
+  historyList.innerHTML = "";
+  if (!history || history.length === 0) {
+    const empty = document.createElement("li");
+    empty.textContent = "Belum ada riwayat smart fill.";
+    empty.className = "history-empty";
+    historyList.appendChild(empty);
+    return;
+  }
+
+  history.forEach(entry => {
+    const li = document.createElement("li");
+    li.className = "history-entry";
+    li.innerHTML = `
+      <div class="history-row">
+        <span class="history-title">${entry.formName || "Unknown form"}</span>
+        <span class="history-time">${new Date(entry.timestamp).toLocaleString()}</span>
+      </div>
+      <div class="history-question"><strong>Pertanyaan:</strong> ${entry.question || "Tidak ada pertanyaan"}</div>
+      <div class="history-answer"><strong>Jawaban:</strong> ${entry.answer || "Tidak ada jawaban"}</div>
+      <div class="history-status"><strong>Status:</strong> ${entry.status}</div>
+      <details>
+        <summary>Detail proses</summary>
+        ${Array.isArray(entry.events) ? entry.events.map(evt => `<div class="history-event">${new Date(evt.timestamp).toLocaleTimeString()} — ${evt.label}${evt.detail ? `: ${evt.detail}` : ""}</div>`).join('') : ''}
+      </details>
+    `;
+    historyList.appendChild(li);
+  });
+}

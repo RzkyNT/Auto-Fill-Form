@@ -141,6 +141,70 @@
       transform: translateY(-1px);
     }
 
+    .history-group {
+      max-height: 240px;
+    }
+
+    .history-subhead {
+      font-size: 0.85em;
+      margin-bottom: 8px;
+      color: #3a3a3a;
+    }
+
+    .history-list {
+      list-style: none;
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 0;
+      margin: 0;
+      border: 1px solid #dde2ff;
+      border-radius: 8px;
+      background: #f9f8ff;
+    }
+
+    .history-entry {
+      padding: 10px;
+      border-bottom: 1px solid #e3e3f5;
+    }
+
+    .history-entry:last-child {
+      border-bottom: none;
+    }
+
+    .history-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85em;
+      margin-bottom: 4px;
+    }
+
+    .history-title {
+      font-weight: 600;
+      color: #2c0d67;
+    }
+
+    .history-time {
+      font-size: 0.75em;
+      color: #5b5b78;
+    }
+
+    .history-question,
+    .history-answer,
+    .history-status {
+      font-size: 0.8em;
+      color: #333;
+      margin-bottom: 2px;
+    }
+
+    .history-clear {
+      background: #f44336;
+      margin-top: 10px;
+    }
+
+    .history-clear:hover {
+      background: #d32f2f;
+    }
+
     .hidden {
       display: none;
     }
@@ -276,6 +340,13 @@
       <input type="checkbox" id="dark-mode-toggle" />
       <span>Dark mode</span>
     </label>
+  </div>
+
+  <div class="settings-group history-group">
+    <h4>Smart Fill History</h4>
+    <p class="history-subhead">Mengedepankan prompt-text dan menyimpan pertanyaan/ jawaban terakhir.</p>
+    <ul id="history-list" class="history-list"></ul>
+    <button id="clear-history" class="save-button history-clear">Hapus Riwayat</button>
   </div>
 
   <script src="popup.js"></script>
