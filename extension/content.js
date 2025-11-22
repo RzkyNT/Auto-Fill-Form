@@ -310,7 +310,7 @@ function removeProgressOverlay() {
   smartFillSession = null;
 }
 
-function startHistoryEntry(questionText) {
+function startHistoryEntry(questionText, platform) {
   if (!smartFillSession) return;
   smartFillSession.currentEntry = {
     formName: document.title || window.location.hostname,
@@ -319,6 +319,7 @@ function startHistoryEntry(questionText) {
     answer: "",
     status: "pending",
     timestamp: Date.now(),
+    platform: platform || "unknown",
     events: [],
   };
 }
@@ -361,9 +362,10 @@ async function doSmartFill() {
   const isGForm = host === 'docs.google.com' && window.location.pathname.includes('/forms/');
   const isWayground = host.includes('wayground.com');
   const isQuizziz = host.includes('quizziz.com');
+  const isKahoot = host.includes('kahoot.it') || host.includes('play.kahoot.it');
 
-  if (!isGForm && !isWayground && !isQuizziz) {
-    alert("Smart Fill currently supports Google Forms, wayground.com, and quizziz.com.");
+  if (!isGForm && !isWayground && !isQuizziz && !isKahoot) {
+    alert("Smart Fill currently supports Google Forms, wayground.com, quizziz.com, and kahoot.it.");
     console.warn("Smart Fill aborted: Unsupported host.");
     removeProgressOverlay();
     return;
@@ -495,7 +497,12 @@ async function handleQuizPlatforms(host) {
     throw new Error("Tidak dapat menemukan pertanyaan pada halaman ini.");
   }
   smartFillSession.totalSteps = 1;
-  startHistoryEntry(questionText);
+  const platformName = host.includes("wayground.com")
+    ? "wayground.com"
+    : host.includes("quizziz.com")
+      ? "quizziz.com"
+      : "kahoot.it";
+  startHistoryEntry(questionText, platformName);
   updateProgressOverlay("Listening to question", questionText);
   const options = extractQuizOptions(host);
   if (!options.length) {
@@ -517,16 +524,51 @@ async function handleQuizPlatforms(host) {
 }
 
 function matchOption(options, aiAnswer) {
-  const normalizedAnswer = aiAnswer?.toLowerCase().trim();
+  const normalizedAnswer = normalizeQuizText(aiAnswer);
   if (!normalizedAnswer) return null;
   for (const option of options) {
-    const normalizedLabel = option.label?.toLowerCase().trim();
+    const normalizedLabel = normalizeQuizText(option.label);
     if (!normalizedLabel) continue;
-    if (normalizedLabel === normalizedAnswer || normalizedLabel.includes(normalizedAnswer) || normalizedAnswer.includes(normalizedLabel)) {
+    if (
+      normalizedLabel === normalizedAnswer ||
+      normalizedLabel.includes(normalizedAnswer) ||
+      normalizedAnswer.includes(normalizedLabel)
+    ) {
       return option;
     }
   }
+
+  const answerTokens = normalizedAnswer.split(/\s+/).filter(Boolean);
+  if (answerTokens.length > 1) {
+    for (const option of options) {
+      const normalizedLabel = normalizeQuizText(option.label);
+      if (!normalizedLabel) continue;
+      if (answerTokens.every(token => normalizedLabel.includes(token))) {
+        return option;
+      }
+    }
+  }
+
   return null;
+}
+
+function sanitizeQuizText(text) {
+  if (!text) return "";
+  let cleaned = text.replace(/\u00A0/g, " ");
+  if (typeof cleaned.normalize === "function") {
+    cleaned = cleaned.normalize("NFKC");
+  }
+  cleaned = cleaned
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\uFEFF]/g, "")
+    .replace(/ƒ\?["”]?/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned;
+}
+
+function normalizeQuizText(text) {
+  return sanitizeQuizText(text).toLowerCase();
 }
 
 function extractQuizQuestion(host) {
@@ -537,6 +579,26 @@ function extractQuizQuestion(host) {
   if (host.includes("quizziz.com")) {
     const element = document.querySelector('[data-testid="question-title"]');
     return element ? element.textContent.trim() : null;
+  }
+  if (host.includes("kahoot.it") || host.includes("play.kahoot.it")) {
+    const selectors = [
+      '.QuestionHeader-questionText',
+      '.question-title',
+      '[data-automation-id="question-title"]',
+      '.QuestionCard-questionTitle',
+      '.kahoot-question-page h1',
+      '[data-automation-id="question-text"]',
+      '[data-functional-selector="block-title"]',
+      '.question-title__TitleWrapper-sc-12qj0yr-0',
+      '.question-title__Title-sc-12qj0yr-1',
+      '.extensive-question-title__Title-sc-1m88qtl-0',
+    ];
+    for (const selector of selectors) {
+      const node = document.querySelector(selector);
+      if (node && sanitizeQuizText(node.textContent)) {
+        return sanitizeQuizText(node.textContent);
+      }
+    }
   }
   return null;
 }
@@ -561,6 +623,25 @@ function extractQuizOptions(host) {
       const trigger = node.closest('[role="button"], .option');
       if (label && trigger) options.push({ label, element: trigger });
     });
+    return options;
+  }
+
+  if (host.includes("kahoot.it") || host.includes("play.kahoot.it")) {
+    const nodes = document.querySelectorAll(
+      '[data-automation-id="answer-button"], .AnswerButton, button.kahoot-answer-card, [data-functional-selector^="question-choice-text-"]'
+    );
+    nodes.forEach(node => {
+      let labelNode = node.querySelector('[data-automation-id="answer-text"], .AnswerButton-text, .answer-text');
+      if (!labelNode && node.matches('[data-functional-selector^="question-choice-text-"]')) {
+        labelNode = node;
+      }
+      const label = sanitizeQuizText(labelNode ? labelNode.textContent : node.textContent);
+      if (label) {
+        const clickable = node.closest('button,[role="button"],[data-automation-id="answer-button"]') || node;
+        options.push({ label, element: clickable });
+      }
+    });
+    return options;
   }
 
   return options;
