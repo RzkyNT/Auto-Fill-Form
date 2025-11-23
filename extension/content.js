@@ -3,6 +3,8 @@ window.addEventListener("fakeFiller:run", doFakeFill);
 window.addEventListener("fakeFiller:smartFill", doSmartFill);
 
 let smartFillSession = null;
+let answerToastTimer = null;
+let kahootHighlightedOption = null;
 
 // Auto-run if enabled
 window.addEventListener('load', () => {
@@ -492,6 +494,7 @@ async function fillGoogleFormQuestion(q, questionText) {
 }
 
 async function handleQuizPlatforms(host) {
+  clearKahootRecommendation();
   const questionText = extractQuizQuestion(host);
   if (!questionText) {
     throw new Error("Tidak dapat menemukan pertanyaan pada halaman ini.");
@@ -515,8 +518,13 @@ async function handleQuizPlatforms(host) {
   updateProgressOverlay("Matching AI response...", aiAnswer);
   const target = matchOption(options, aiAnswer);
   if (target) {
-    target.element.click();
-    finalizeHistoryEntry("answered (quiz)", target.label);
+    if (host.includes("kahoot.it") || host.includes("play.kahoot.it")) {
+      highlightKahootRecommendation(target.element, target.label);
+      finalizeHistoryEntry("suggested (kahoot)", target.label);
+    } else {
+      target.element.click();
+      finalizeHistoryEntry("answered (quiz)", target.label);
+    }
   } else {
     finalizeHistoryEntry("no match", aiAnswer);
   }
@@ -552,6 +560,93 @@ function matchOption(options, aiAnswer) {
   return null;
 }
 
+function highlightKahootRecommendation(element, label) {
+  if (!element) return;
+  ensureKahootUiStyles();
+  clearKahootRecommendation();
+  kahootHighlightedOption = element;
+  element.classList.add("fake-filler-kahoot-highlight");
+  element.setAttribute("data-fake-filler-recommendation", "true");
+  showKahootRecommendationToast(`Rekomendasi AI: ${label}`);
+}
+
+function clearKahootRecommendation() {
+  if (kahootHighlightedOption) {
+    kahootHighlightedOption.classList.remove("fake-filler-kahoot-highlight");
+    kahootHighlightedOption.removeAttribute("data-fake-filler-recommendation");
+    kahootHighlightedOption = null;
+  }
+  hideKahootRecommendationToast();
+}
+
+function ensureKahootUiStyles() {
+  if (document.getElementById("fake-filler-kahoot-style")) return;
+  const style = document.createElement("style");
+  style.id = "fake-filler-kahoot-style";
+  style.textContent = `
+    .fake-filler-kahoot-highlight {
+      outline: 4px solid #ffffffff !important;
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.8);
+      border-radius: 16px;
+      position: relative;
+    }
+    .fake-filler-toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translate(-50%, 20px);
+      background: #2c0d67;
+      color: #fff;
+      padding: 12px 18px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 600;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 2147483647;
+    }
+    .fake-filler-toast.visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function showKahootRecommendationToast(text) {
+  ensureKahootUiStyles();
+  let toast = document.getElementById("fake-filler-answer-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "fake-filler-answer-toast";
+    toast.className = "fake-filler-toast";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = text;
+  requestAnimationFrame(() => {
+    toast.classList.add("visible");
+  });
+  if (answerToastTimer) {
+    clearTimeout(answerToastTimer);
+  }
+  answerToastTimer = setTimeout(() => {
+    toast.classList.remove("visible");
+  }, 4000);
+}
+
+function hideKahootRecommendationToast() {
+  const toast = document.getElementById("fake-filler-answer-toast");
+  if (toast) {
+    toast.classList.remove("visible");
+    setTimeout(() => toast.remove(), 200);
+  }
+  if (answerToastTimer) {
+    clearTimeout(answerToastTimer);
+    answerToastTimer = null;
+  }
+}
+
 function sanitizeQuizText(text) {
   if (!text) return "";
   let cleaned = text.replace(/\u00A0/g, " ");
@@ -568,7 +663,14 @@ function sanitizeQuizText(text) {
 }
 
 function normalizeQuizText(text) {
-  return sanitizeQuizText(text).toLowerCase();
+  const sanitized = sanitizeQuizText(text);
+  if (!sanitized) return "";
+  return sanitized
+    .toLowerCase()
+    .replace(/['"`“”‘’´]/g, "")
+    .replace(/[.,!?;:()[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function extractQuizQuestion(host) {
@@ -627,19 +729,42 @@ function extractQuizOptions(host) {
   }
 
   if (host.includes("kahoot.it") || host.includes("play.kahoot.it")) {
-    const nodes = document.querySelectorAll(
-      '[data-automation-id="answer-button"], .AnswerButton, button.kahoot-answer-card, [data-functional-selector^="question-choice-text-"]'
-    );
+    const buttonSelectors = [
+      '[data-functional-selector^="answer-"]',
+      '[data-automation-id="answer-button"]',
+      '.AnswerButton',
+      'button.kahoot-answer-card',
+    ].join(", ");
+    const labelSelectors = [
+      '[data-functional-selector^="question-choice-text-"]',
+      '.AnswerButton-text',
+      '.answer-text',
+      '.centered-floated-text__ChoiceText-sc-wq1dlx-6',
+      '.break-long-words__WordBreak-sc-12amgy7-0',
+    ].join(", ");
+
+    let nodes = document.querySelectorAll(buttonSelectors);
+    if (!nodes.length) {
+      nodes = document.querySelectorAll('[data-functional-selector^="question-choice-text-"]');
+    }
+
+    const seenButtons = new Set();
     nodes.forEach(node => {
-      let labelNode = node.querySelector('[data-automation-id="answer-text"], .AnswerButton-text, .answer-text');
-      if (!labelNode && node.matches('[data-functional-selector^="question-choice-text-"]')) {
+      const clickable = node.matches('button,[role="button"]')
+        ? node
+        : node.closest('button,[role="button"],[data-functional-selector^="answer-"],[data-automation-id="answer-button"]');
+      if (!clickable || seenButtons.has(clickable)) return;
+
+      let labelNode = clickable.querySelector(labelSelectors);
+      if (!labelNode && node.matches(labelSelectors)) {
         labelNode = node;
       }
-      const label = sanitizeQuizText(labelNode ? labelNode.textContent : node.textContent);
-      if (label) {
-        const clickable = node.closest('button,[role="button"],[data-automation-id="answer-button"]') || node;
-        options.push({ label, element: clickable });
-      }
+
+      const label = sanitizeQuizText(labelNode ? labelNode.textContent : clickable.textContent);
+      if (!label) return;
+
+      seenButtons.add(clickable);
+      options.push({ label, element: clickable });
     });
     return options;
   }
