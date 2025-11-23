@@ -1,5 +1,11 @@
-// This script handles smart fill requests to Gemini or OpenAI depending on user settings.
+// background.js
+chrome.runtime.onInstalled.addListener(function(details) {
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: 'https://rizqiahsansetiawan.ct.ws/ext/welcome.html' });
+  }
+});
 
+// This script handles smart fill requests to Gemini or OpenAI depending on user settings.
 console.log("Background service worker started.");
 
 function shuffle(array) {
