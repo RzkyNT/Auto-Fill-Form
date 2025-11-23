@@ -6,6 +6,21 @@ let smartFillSession = null;
 let answerToastTimer = null;
 let kahootHighlightedOption = null;
 
+function initializeSmartFillSession() {
+  smartFillSession = {
+    stopRequested: false,
+    totalSteps: 0,
+    completedSteps: 0,
+    currentEntry: null,
+  };
+}
+
+function ensureSmartFillSession() {
+  if (!smartFillSession) {
+    initializeSmartFillSession();
+  }
+}
+
 // Auto-run if enabled
 window.addEventListener('load', () => {
   chrome.storage.sync.get(["autoRun"], (result) => {
@@ -140,12 +155,9 @@ function getAiResponse(prompt) {
  */
 function createProgressOverlay() {
   removeProgressOverlay();
-  smartFillSession = {
-    stopRequested: false,
-    totalSteps: 0,
-    completedSteps: 0,
-  };
-
+  if (!smartFillSession) {
+    initializeSmartFillSession();
+  }
   const overlay = document.createElement("div");
   overlay.id = "fake-filler-overlay";
   overlay.innerHTML = `
@@ -174,17 +186,19 @@ function createProgressOverlay() {
       align-items: center;
       justify-content: center;
       z-index: 2147483647;
-      background: rgba(0,0,0,0.5);
+      background: rgba(4, 7, 13, 0.82);
     }
     .overlay-card {
-      background: #fff;
+      background: rgba(4,7,13,0.9);
       border-radius: 16px;
       padding: 20px;
       max-width: 360px;
       width: 100%;
-      box-shadow: 0 14px 38px rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.06);
+      box-shadow: 0 30px 80px rgba(0,0,0,0.65);
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       text-align: left;
+      color: #F2F4F6;
     }
     .overlay-header {
       display: flex;
@@ -195,16 +209,16 @@ function createProgressOverlay() {
     .overlay-title {
       font-size: 1.2em;
       font-weight: 700;
-      color: #2c0d67;
+      color: #25D366;
     }
     .overlay-detail {
       font-size: 0.85em;
-      color: #3b3b3b;
+      color: rgba(242,244,246,0.65);
     }
     .overlay-status {
       font-size: 1em;
       font-weight: 600;
-      color: #0f1d38;
+      color: #F2F4F6;
       margin-bottom: 12px;
     }
     .overlay-history {
@@ -213,40 +227,41 @@ function createProgressOverlay() {
       margin: 12px 0 0 0;
       max-height: 160px;
       overflow-y: auto;
-      border-top: 1px solid #eceef2;
+      border-top: 1px solid rgba(255,255,255,0.08);
       padding-top: 8px;
     }
     .overlay-history li {
       margin-bottom: 6px;
       font-size: 0.85em;
-      color: #222;
+      color: rgba(242,244,246,0.75);
     }
     .progress-bar {
       width: 100%;
       height: 6px;
-      background: #eceef2;
+      background: rgba(255,255,255,0.08);
       border-radius: 999px;
       overflow: hidden;
       margin-bottom: 12px;
     }
     .progress-fill {
       height: 100%;
-      background: linear-gradient(135deg, #7b2ce0, #e23c99);
+      background: linear-gradient(135deg, #25D366, #2BE07B);
       transition: width 0.2s ease;
       width: 0;
     }
     .overlay-stop-button {
-      background: #ff4d60;
-      color: #fff;
-      border: none;
+      background: transparent;
+      color: #ff6b7a;
+      border: 1px solid rgba(255,107,122,0.6);
       border-radius: 8px;
       padding: 6px 12px;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s ease;
+      transition: background 0.2s ease, color 0.2s ease;
     }
     .overlay-stop-button:hover {
-      background: #d43a4c;
+      background: rgba(255,107,122,0.15);
+      color: #fff;
     }
   `;
   document.body.appendChild(style);
@@ -309,7 +324,12 @@ function removeProgressOverlay() {
   const style = document.getElementById("fake-filler-overlay-style");
   if (overlay) overlay.remove();
   if (style) style.remove();
-  smartFillSession = null;
+  if (smartFillSession) {
+    smartFillSession.stopRequested = false;
+    smartFillSession.totalSteps = 0;
+    smartFillSession.completedSteps = 0;
+    smartFillSession.currentEntry = null;
+  }
 }
 
 function startHistoryEntry(questionText, platform) {
@@ -357,7 +377,13 @@ function saveSmartFillHistory(entry) {
  */
 async function doSmartFill() {
   console.log("--- Smart Fill Initialized ---");
-  createProgressOverlay();
+  ensureSmartFillSession();
+  const showOverlay = await getOverlayPreference();
+  if (showOverlay) {
+    createProgressOverlay();
+  } else {
+    removeProgressOverlay();
+  }
   let encounteredError = null;
 
   const host = window.location.hostname;
@@ -387,14 +413,24 @@ async function doSmartFill() {
     alert(`An error occurred while using the AI provider: ${error.message}`);
   } finally {
     console.log("--- Smart Fill Completed ---");
-    if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
-      updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
-      updateProgressBar(1);
-      setTimeout(removeProgressOverlay, 600);
-    } else {
-      setTimeout(removeProgressOverlay, 1500);
+    if (smartFillSession) {
+      if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
+        updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
+        updateProgressBar(1);
+        setTimeout(removeProgressOverlay, 600);
+      } else {
+        setTimeout(removeProgressOverlay, 1500);
+      }
     }
   }
+}
+
+function getOverlayPreference() {
+  return new Promise(resolve => {
+    chrome.storage.local.get({ showOverlay: true }, (result) => {
+      resolve(result.showOverlay !== false);
+    });
+  });
 }
 
 async function handleGoogleForms() {
@@ -585,8 +621,8 @@ function ensureKahootUiStyles() {
   style.id = "fake-filler-kahoot-style";
   style.textContent = `
     .fake-filler-kahoot-highlight {
-      outline: 4px solid #ffffffff !important;
-      box-shadow: 0 0 12px rgba(255, 255, 255, 0.8);
+      outline: 3px solid #25D366 !important;
+      box-shadow: 0 0 18px rgba(37, 211, 102, 0.7);
       border-radius: 16px;
       position: relative;
     }
@@ -595,8 +631,8 @@ function ensureKahootUiStyles() {
       bottom: 28px;
       left: 50%;
       transform: translate(-50%, 20px);
-      background: #2c0d67;
-      color: #fff;
+      background: #0B0F14;
+      color: #F2F4F6;
       padding: 12px 18px;
       border-radius: 999px;
       font-size: 14px;
@@ -605,6 +641,8 @@ function ensureKahootUiStyles() {
       pointer-events: none;
       transition: opacity 0.2s ease, transform 0.2s ease;
       z-index: 2147483647;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.65);
     }
     .fake-filler-toast.visible {
       opacity: 1;

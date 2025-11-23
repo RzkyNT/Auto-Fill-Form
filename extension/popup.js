@@ -25,6 +25,7 @@ const saveOpenAiButton = document.getElementById("save-openai");
 const geminiSettingsEl = document.getElementById("gemini-settings");
 const openAiSettingsEl = document.getElementById("openai-settings");
 const darkModeToggle = document.getElementById("dark-mode-toggle");
+const overlayToggle = document.getElementById("overlay-toggle");
 const htmlRoot = document.documentElement;
 const historyList = document.getElementById("history-list");
 const clearHistoryButton = document.getElementById("clear-history");
@@ -37,7 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   
   // Load API keys
-  chrome.storage.local.get(["apiKeys", "aiProvider", "openAiConfig", "themeMode"], (result) => {
+  chrome.storage.local.get(["apiKeys", "aiProvider", "openAiConfig", "themeMode", "showOverlay"], (result) => {
     if (result.apiKeys && Array.isArray(result.apiKeys)) {
       apiKeysTextarea.value = result.apiKeys.map(item => item.key).join('\n');
     }
@@ -58,6 +59,9 @@ document.addEventListener("DOMContentLoaded", () => {
     applyTheme(themeMode === "dark");
     darkModeToggle.checked = themeMode === "dark";
     renderHistory(result.smartFillHistory || []);
+
+    const showOverlay = result.showOverlay !== false;
+    overlayToggle.checked = showOverlay;
   });
 });
 
@@ -87,7 +91,7 @@ function updateProviderSections(provider) {
 }
 
 function applyTheme(isDark) {
-  htmlRoot.classList.toggle("dark", isDark);
+  htmlRoot.classList.toggle("light", !isDark);
 }
 
 // Save API keys
@@ -129,6 +133,10 @@ darkModeToggle.addEventListener("change", () => {
   const isDark = darkModeToggle.checked;
   applyTheme(isDark);
   chrome.storage.local.set({ themeMode: isDark ? "dark" : "light" });
+});
+
+overlayToggle.addEventListener("change", () => {
+  chrome.storage.local.set({ showOverlay: overlayToggle.checked });
 });
 
 clearHistoryButton.addEventListener("click", () => {
