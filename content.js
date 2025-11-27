@@ -28,6 +28,7 @@ window.addEventListener('load', () => {
       setTimeout(doFakeFill, 500);
     }
   });
+  createTriggerOverlay();
 });
 
 async function doFakeFill() {
@@ -370,6 +371,67 @@ function saveSmartFillHistory(entry) {
     const history = [record, ...result.smartFillHistory].slice(0, 40);
     chrome.storage.local.set({ smartFillHistory: history });
   });
+}
+
+/**
+ * Creates a floating action button to trigger the Smart Fill.
+ */
+function createTriggerOverlay() {
+  const host = window.location.hostname;
+  const isGForm = host === 'docs.google.com' && window.location.pathname.includes('/forms/');
+  const isWayground = host.includes('wayground.com');
+  const isQuizziz = host.includes('quizziz.com');
+  const isKahoot = host.includes('kahoot.it') || host.includes('play.kahoot.it');
+  const isCbt = host === '115.124.76.241';
+
+  // Only show the trigger on supported pages
+  if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) {
+    return;
+  }
+
+  // Avoid creating duplicate buttons
+  if (document.getElementById('smart-fill-trigger-button')) {
+    return;
+  }
+
+  const triggerButton = document.createElement("button");
+  triggerButton.id = "smart-fill-trigger-button";
+  triggerButton.textContent = "AI";
+
+  const style = document.createElement("style");
+  style.id = "smart-fill-trigger-style";
+  style.textContent = `
+    #smart-fill-trigger-button {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 2147483645; /* Below progress overlay */
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background-color: #25D366;
+      border: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 24px;
+      font-weight: bold;
+      transition: transform 0.2s ease, background-color 0.2s ease;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    #smart-fill-trigger-button:hover {
+      transform: scale(1.05);
+      background-color: #28e070;
+    }
+  `;
+
+  document.head.appendChild(style);
+  document.body.appendChild(triggerButton);
+
+  triggerButton.addEventListener('click', doSmartFill);
 }
 
 /**
