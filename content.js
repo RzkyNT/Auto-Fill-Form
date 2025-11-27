@@ -426,12 +426,27 @@ function createTriggerOverlay() {
       transform: scale(1.05);
       background-color: #28e070;
     }
+    #smart-fill-trigger-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+      background-color: #888; /* A neutral color for disabled state */
+    }
   `;
 
   document.head.appendChild(style);
   document.body.appendChild(triggerButton);
 
-  triggerButton.addEventListener('click', doSmartFill);
+  triggerButton.addEventListener('click', async () => {
+    triggerButton.disabled = true;
+    const originalText = triggerButton.textContent;
+    triggerButton.textContent = 'Thinking...';
+    try {
+      await doSmartFill();
+    } finally {
+      triggerButton.disabled = false;
+      triggerButton.textContent = originalText;
+    }
+  });
 }
 
 /**
