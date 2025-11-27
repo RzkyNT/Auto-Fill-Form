@@ -391,9 +391,10 @@ async function doSmartFill() {
   const isWayground = host.includes('wayground.com');
   const isQuizziz = host.includes('quizziz.com');
   const isKahoot = host.includes('kahoot.it') || host.includes('play.kahoot.it');
+  const isCbt = host === '115.124.76.241';
 
-  if (!isGForm && !isWayground && !isQuizziz && !isKahoot) {
-    alert("Smart Fill currently supports Google Forms, wayground.com, quizziz.com, and kahoot.it.");
+  if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) {
+    alert("Smart Fill currently supports Google Forms, wayground.com, quizziz.com, kahoot.it, and the CBT instance.");
     console.warn("Smart Fill aborted: Unsupported host.");
     removeProgressOverlay();
     return;
@@ -712,6 +713,14 @@ function normalizeQuizText(text) {
 }
 
 function extractQuizQuestion(host) {
+  if (host === '115.124.76.241') {
+    const element = document.querySelector('#isi-tes-soal');
+    if (element) {
+        // The question is the text before the <hr> tag.
+        return element.innerHTML.split('<hr>')[0].trim();
+    }
+    return null;
+  }
   if (host.includes("wayground.com")) {
     const element = document.querySelector('[data-testid="question-container-text"] p');
     return element ? element.textContent.trim() : null;
@@ -745,6 +754,17 @@ function extractQuizQuestion(host) {
 
 function extractQuizOptions(host) {
   const options = [];
+  if (host === '115.124.76.241') {
+      const nodes = document.querySelectorAll('#isi-tes-soal .radio');
+      nodes.forEach(node => {
+          const label = node.querySelector('label')?.textContent.trim();
+          const element = node.querySelector('input[type="radio"]');
+          if (label && element) {
+              options.push({ label, element });
+          }
+      });
+      return options;
+  }
   if (host.includes("wayground.com")) {
     const nodes = document.querySelectorAll('.option');
     nodes.forEach(node => {
