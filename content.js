@@ -29,6 +29,7 @@ window.addEventListener('load', () => {
     }
   });
   createTriggerOverlay();
+  enableUserSelect();
 });
 
 async function doFakeFill() {
@@ -371,6 +372,24 @@ function saveSmartFillHistory(entry) {
     const history = [record, ...result.smartFillHistory].slice(0, 40);
     chrome.storage.local.set({ smartFillHistory: history });
   });
+}
+
+/**
+ * Injects CSS to re-enable user selection on pages that disable it.
+ */
+function enableUserSelect() {
+  const style = document.createElement("style");
+  style.id = "enable-user-select-style";
+  style.textContent = `
+    /* Re-enable text selection */
+    * {
+      -webkit-user-select: text !important; /* Safari */
+      -moz-user-select: text !important;    /* Firefox */
+      -ms-user-select: text !important;     /* IE 10+ */
+      user-select: text !important;         /* Standard */
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 /**
