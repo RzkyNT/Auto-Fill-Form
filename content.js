@@ -403,19 +403,18 @@ function createTriggerOverlay() {
   const isKahoot = host.includes('kahoot.it') || host.includes('play.kahoot.it');
   const isCbt = host === '115.124.76.241';
 
-  // Only show the trigger on supported pages
-  if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) {
-    return;
-  }
-
-  // Avoid creating duplicate buttons
-  if (document.getElementById('smart-fill-trigger-button')) {
-    return;
-  }
+  if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) return;
+  if (document.getElementById('smart-fill-trigger-button')) return;
 
   const triggerButton = document.createElement("button");
   triggerButton.id = "smart-fill-trigger-button";
-  triggerButton.textContent = "AI";
+  triggerButton.innerHTML = `
+    <div class="smart-fill-icon">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+  `;
 
   const style = document.createElement("style");
   style.id = "smart-fill-trigger-style";
@@ -424,49 +423,42 @@ function createTriggerOverlay() {
       position: fixed;
       bottom: 20px;
       right: 20px;
-      z-index: 2147483645; /* Below progress overlay */
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      background-color: #25D366;
+      z-index: 2147483645;
+      width: 64px;
+      height: 64px;
+      background: #EDE1FF;
+      border-radius: 18px;
       border: none;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
-      font-size: 24px;
-      font-weight: bold;
-      transition: transform 0.2s ease, background-color 0.2s ease;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      transition: transform .2s ease, box-shadow .2s ease;
     }
     #smart-fill-trigger-button:hover {
-      transform: scale(1.05);
-      background-color: #28e070;
+      transform: scale(1.06);
+      box-shadow: 0 6px 15px rgba(0,0,0,0.28);
     }
-    #smart-fill-trigger-button:disabled {
-      cursor: not-allowed;
-      opacity: 0.6;
-      background-color: #888; /* A neutral color for disabled state */
+    #smart-fill-trigger-button .smart-fill-icon {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    #smart-fill-trigger-button .smart-fill-icon span {
+      width: 24px;
+      height: 4px;
+      background: #5E3BAE;
+      border-radius: 4px;
     }
   `;
 
   document.head.appendChild(style);
   document.body.appendChild(triggerButton);
 
-  triggerButton.addEventListener('click', async () => {
-    triggerButton.disabled = true;
-    const originalText = triggerButton.textContent;
-    triggerButton.textContent = 'Thinking...';
-    try {
-      await doSmartFill();
-    } finally {
-      triggerButton.disabled = false;
-      triggerButton.textContent = originalText;
-    }
-  });
+  triggerButton.addEventListener('click', doSmartFill);
 }
+
 
 /**
  * Fills forms intelligently using Gemini AI.
