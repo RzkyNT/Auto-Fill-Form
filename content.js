@@ -22,6 +22,43 @@ function ensureSmartFillSession() {
 }
 
 // Auto-run if enabled
+function injectSweetAlert2() {
+  // Check if SweetAlert2 is already injected
+  if (document.getElementById('sweetalert2-script')) {
+    return;
+  }
+
+  const cssLink = document.createElement('link');
+  cssLink.href = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2.min.css');
+  cssLink.rel = 'stylesheet';
+  document.head.appendChild(cssLink);
+
+  const jsScript = document.createElement('script');
+  jsScript.id = 'sweetalert2-script';
+  jsScript.src = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2.all.min.js');
+  jsScript.async = true;
+  document.head.appendChild(jsScript);
+}
+
+function showToast(icon, title, timer = 3000) {
+  // Ensure Swal is available before trying to use it
+  if (typeof Swal === 'undefined') {
+    console.warn('SweetAlert2 not loaded, falling back to alert:', title);
+    alert(title);
+    return;
+  }
+
+  Swal.fire({
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: timer,
+    timerProgressBar: true,
+    icon: icon,
+    title: title
+  });
+}
+
 window.addEventListener('load', () => {
   chrome.storage.sync.get(["autoRun"], (result) => {
     if (result.autoRun) {
@@ -29,28 +66,15 @@ window.addEventListener('load', () => {
     }
   });
 
+  // Inject SweetAlert2 here
+  injectSweetAlert2();
+
   // Create the UI first
   createTriggerOverlay();
   enableUserSelect();
 
-  // Then, initialize fullscreen state based on stored preference
-  chrome.storage.local.get(['fullscreen-enabled'], (result) => {
-    const host = window.location.hostname;
-    const isSupportedPage = ['docs.google.com', 'wayground.com', 'quizziz.com', 'kahoot.it', 'play.kahoot.it', '115.124.76.241'].some(supportedHost => host.includes(supportedHost));
-
-    if (result['fullscreen-enabled'] && isSupportedPage) {
-      // Check if we're not already in fullscreen to avoid errors
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(err => {
-          console.error(`Error auto-enabling fullscreen: ${err.message}`);
-          // If it fails, reset the preference to avoid loops
-          chrome.storage.local.set({ 'fullscreen-enabled': false });
-        });
-      }
-    }
-    // Always update the button state on load
-    updateFullscreenButtonState();
-  });
+  // Always update the button state on load, but do not try to enter fullscreen automatically.
+  updateFullscreenButtonState();
 });
 
 async function doFakeFill() {
@@ -735,7 +759,7 @@ async function doSmartFill() {
   const isCbt = host === '115.124.76.241';
 
   if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) {
-    alert("Smart Fill currently supports Google Forms, wayground.com, quizziz.com, kahoot.it, and the CBT instance.");
+    showToast('error', "Smart Fill currently supports Google Forms, wayground.com, quizziz.com, kahoot.it, and the CBT instance.", 6000);
     console.warn("Smart Fill aborted: Unsupported host.");
     removeProgressOverlay();
     updateAiButtonState(false); // Reset button state
@@ -753,7 +777,7 @@ async function doSmartFill() {
     console.error("Error during Smart Fill:", error);
     updateProgressOverlay("Error", error.message);
     finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
-    alert(`An error occurred while using the AI provider: ${error.message}`);
+    showToast('error', `An error occurred while using the AI provider: ${error.message}`, 5000);
   } finally {
     console.log("--- Smart Fill Completed ---");
     if (smartFillSession) {
