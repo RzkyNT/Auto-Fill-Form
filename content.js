@@ -404,26 +404,43 @@ function createTriggerOverlay() {
   const isCbt = host === '115.124.76.241';
 
   if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) return;
-  if (document.getElementById('smart-fill-trigger-button')) return;
+  // Check for the container ID instead of the button ID
+  if (document.getElementById('smart-fill-trigger-container')) return;
 
-  const triggerButton = document.createElement("button");
-  triggerButton.id = "smart-fill-trigger-button";
-  triggerButton.innerHTML = `
-    <div class="smart-fill-icon">
-      <span></span>
-      <span></span>
-      <span></span>
+  const triggerContainer = document.createElement("div");
+  triggerContainer.id = "smart-fill-trigger-container";
+  triggerContainer.className = "tooltip-container"; // Use class for styling consistency
+  triggerContainer.innerHTML = `
+    <button id="smart-fill-trigger-button">
+        <div class="smart-fill-icon">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+    </button>
+    <div class="tooltip-content">
+        <div class="social-icons">
+            <a href="#" id="run-ai-button" class="social-icon" title="Run AI">
+                <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>
+            </a>
+            <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">
+                <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M200-200h280v-80H280v-200h-80v280Zm280-560v-80h280v280h-80v-200H480Z"/></svg>
+            </a>
+        </div>
     </div>
   `;
 
   const style = document.createElement("style");
   style.id = "smart-fill-trigger-style";
   style.textContent = `
-    #smart-fill-trigger-button {
+    #smart-fill-trigger-container {
       position: fixed;
       bottom: 20px;
       right: 20px;
       z-index: 2147483645;
+    }
+    /* Original button styles */
+    #smart-fill-trigger-button {
       width: 64px;
       height: 64px;
       background: #EDE1FF;
@@ -451,13 +468,145 @@ function createTriggerOverlay() {
       background: #5E3BAE;
       border-radius: 4px;
     }
+
+    /* Tooltip styles from prompt.txt */
+    .tooltip-container {
+        position: relative;
+        display: inline-block;
+        font-family: "Arial", sans-serif;
+    }
+
+    .tooltip-content {
+        position: absolute;
+        bottom: 105%;
+        left: 50%;
+        transform: translateX(-50%) scale(0.8);
+        background: white;
+        border-radius: 15px;
+        padding: 15px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        z-index: 100;
+        pointer-events: none;
+    }
+
+    #smart-fill-trigger-container:hover .tooltip-content,
+    #smart-fill-trigger-container.active .tooltip-content {
+        opacity: 1;
+        visibility: visible;
+        transform: translateX(-50%) scale(1);
+        pointer-events: auto;
+    }
+
+    .social-icons {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+    }
+
+    .social-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: #f0f0f0;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        text-decoration: none;
+    }
+
+    .social-icon:hover {
+        transform: translateY(-3px) scale(1.05);
+        box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
+    }
+
+    .social-icon svg {
+        width: 24px;
+        height: 24px;
+        fill: #333;
+    }
+
+    #run-ai-button:hover { background: #c8e6c9; }
+    #fullscreen-button:hover { background: #bbdefb; }
+
+    /* Responsive Design for Mobile */
+    @media (max-width: 768px) {
+      #smart-fill-trigger-button {
+        width: 56px;
+        height: 56px;
+      }
+      .tooltip-content {
+        padding: 12px;
+      }
+      .social-icon {
+        width: 44px;
+        height: 44px;
+      }
+      .social-icon svg {
+        width: 22px;
+        height: 22px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      #smart-fill-trigger-button {
+        width: 50px;
+        height: 50px;
+      }
+      .tooltip-content {
+        padding: 10px;
+      }
+      .social-icon {
+        width: 40px;
+        height: 40px;
+      }
+      .social-icon svg {
+        width: 20px;
+        height: 20px;
+      }
+    }
   `;
 
   document.head.appendChild(style);
-  document.body.appendChild(triggerButton);
+  document.body.appendChild(triggerContainer);
 
-  triggerButton.addEventListener('click', doSmartFill);
+  const mainButton = document.getElementById('smart-fill-trigger-button');
+  const runAiButton = document.getElementById('run-ai-button');
+  const fullscreenButton = document.getElementById('fullscreen-button');
+
+  // Toggle tooltip visibility on click of the main button
+  mainButton.addEventListener('click', (e) => {
+    e.preventDefault();
+    triggerContainer.classList.toggle('active');
+  });
+
+  runAiButton.addEventListener('click', (e) => {
+    e.preventDefault();
+    doSmartFill();
+    triggerContainer.classList.remove('active'); // Hide tooltip after action
+  });
+
+  fullscreenButton.addEventListener('click', (e) => {
+    e.preventDefault();
+    handleFullscreen();
+    triggerContainer.classList.remove('active'); // Hide tooltip after action
+  });
 }
+
+function handleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(err => {
+      alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+    });
+  } else {
+    document.exitFullscreen();
+  }
+}
+
 
 
 /**
