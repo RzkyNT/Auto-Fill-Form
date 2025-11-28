@@ -28,8 +28,29 @@ window.addEventListener('load', () => {
       setTimeout(doFakeFill, 500);
     }
   });
+
+  // Create the UI first
   createTriggerOverlay();
   enableUserSelect();
+
+  // Then, initialize fullscreen state based on stored preference
+  chrome.storage.local.get(['fullscreen-enabled'], (result) => {
+    const host = window.location.hostname;
+    const isSupportedPage = ['docs.google.com', 'wayground.com', 'quizziz.com', 'kahoot.it', 'play.kahoot.it', '115.124.76.241'].some(supportedHost => host.includes(supportedHost));
+
+    if (result['fullscreen-enabled'] && isSupportedPage) {
+      // Check if we're not already in fullscreen to avoid errors
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.error(`Error auto-enabling fullscreen: ${err.message}`);
+          // If it fails, reset the preference to avoid loops
+          chrome.storage.local.set({ 'fullscreen-enabled': false });
+        });
+      }
+    }
+    // Always update the button state on load
+    updateFullscreenButtonState();
+  });
 });
 
 async function doFakeFill() {
@@ -392,6 +413,49 @@ function enableUserSelect() {
   document.head.appendChild(style);
 }
 
+// Action Button SVG icons
+const fullscreenEnterIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M200-200h280v-80H280v-200h-80v280Zm280-560v-80h280v280h-80v-200H480Z"/></svg>`;
+const fullscreenExitIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M280-200v-280h80v200h200v80H280Zm400-320v-200H480v-80h280v280h-80Z"/></svg>`;
+const runAiIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>`;
+const cancelAiIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>`;
+
+
+/**
+ * Updates the fullscreen button's icon and style based on the current state.
+ */
+function updateFullscreenButtonState() {
+  const fullscreenButton = document.getElementById('fullscreen-button');
+  if (!fullscreenButton) return;
+
+  if (document.fullscreenElement) {
+    fullscreenButton.classList.add('active');
+    fullscreenButton.innerHTML = fullscreenExitIcon;
+    fullscreenButton.title = 'Exit Fullscreen';
+  } else {
+    fullscreenButton.classList.remove('active');
+    fullscreenButton.innerHTML = fullscreenEnterIcon;
+    fullscreenButton.title = 'Enter Fullscreen';
+  }
+}
+
+/**
+ * Updates the AI button's icon and style based on the processing state.
+ */
+function updateAiButtonState(isProcessing) {
+  const runAiButton = document.getElementById('run-ai-button');
+  if (!runAiButton) return;
+
+  if (isProcessing) {
+    runAiButton.classList.add('processing');
+    runAiButton.innerHTML = cancelAiIcon;
+    runAiButton.title = 'Cancel AI';
+  } else {
+    runAiButton.classList.remove('processing');
+    runAiButton.innerHTML = runAiIcon;
+    runAiButton.title = 'Run AI';
+  }
+}
+
 /**
  * Creates a floating action button to trigger the Smart Fill.
  */
@@ -421,10 +485,10 @@ function createTriggerOverlay() {
     <div class="tooltip-content">
         <div class="social-icons">
             <a href="#" id="run-ai-button" class="social-icon" title="Run AI">
-                <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>
+                ${runAiIcon}
             </a>
             <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">
-                <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M200-200h280v-80H280v-200h-80v280Zm280-560v-80h280v280h-80v-200H480Z"/></svg>
+                ${fullscreenEnterIcon}
             </a>
         </div>
     </div>
@@ -531,7 +595,20 @@ function createTriggerOverlay() {
     }
 
     #run-ai-button:hover { background: #c8e6c9; }
+    #run-ai-button.processing {
+      background-color: #ffcdd2;
+    }
+    #run-ai-button.processing:hover {
+      background-color: #ef9a9a;
+    }
     #fullscreen-button:hover { background: #bbdefb; }
+    #fullscreen-button.active {
+      background-color: #81d4fa;
+      box-shadow: 0 8px 15px rgba(129, 212, 250, 0.4);
+    }
+    #fullscreen-button.active:hover {
+      background-color: #4fc3f7;
+    }
 
     /* Responsive Design for Mobile */
     @media (max-width: 768px) {
@@ -586,8 +663,20 @@ function createTriggerOverlay() {
 
   runAiButton.addEventListener('click', (e) => {
     e.preventDefault();
-    doSmartFill();
     triggerContainer.classList.remove('active'); // Hide tooltip after action
+
+    const isProcessing = runAiButton.classList.contains('processing');
+    if (isProcessing) {
+      // If AI is running, cancel it.
+      ensureSmartFillSession();
+      if (smartFillSession) {
+        smartFillSession.stopRequested = true;
+      }
+      updateAiButtonState(false); // Immediately reflect cancellation
+    } else {
+      // If AI is not running, start it.
+      doSmartFill();
+    }
   });
 
   fullscreenButton.addEventListener('click', (e) => {
@@ -595,12 +684,26 @@ function createTriggerOverlay() {
     handleFullscreen();
     triggerContainer.classList.remove('active'); // Hide tooltip after action
   });
+  
+  // Set initial state and listen for changes
+  updateFullscreenButtonState();
+  updateAiButtonState(false); // Ensure AI button is in default state on load
+  document.addEventListener('fullscreenchange', () => {
+    const isFullscreen = !!document.fullscreenElement;
+    // Persist the state for future page loads
+    chrome.storage.local.set({ 'fullscreen-enabled': isFullscreen });
+    // Update the button UI
+    updateFullscreenButtonState();
+  });
 }
 
+/**
+ * Toggles fullscreen mode.
+ */
 function handleFullscreen() {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen().catch(err => {
-      alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+      console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
     });
   } else {
     document.exitFullscreen();
@@ -613,6 +716,7 @@ function handleFullscreen() {
  * Fills forms intelligently using Gemini AI.
  */
 async function doSmartFill() {
+  updateAiButtonState(true); // Set button to "Cancel" state
   console.log("--- Smart Fill Initialized ---");
   ensureSmartFillSession();
   const showOverlay = await getOverlayPreference();
@@ -634,6 +738,7 @@ async function doSmartFill() {
     alert("Smart Fill currently supports Google Forms, wayground.com, quizziz.com, kahoot.it, and the CBT instance.");
     console.warn("Smart Fill aborted: Unsupported host.");
     removeProgressOverlay();
+    updateAiButtonState(false); // Reset button state
     return;
   }
 
@@ -660,6 +765,7 @@ async function doSmartFill() {
         setTimeout(removeProgressOverlay, 1500);
       }
     }
+    updateAiButtonState(false); // Reset button state when done
   }
 }
 
