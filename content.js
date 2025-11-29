@@ -1644,14 +1644,17 @@ function generateSelector(el) {
         }
 
         // Add nth-of-type to distinguish between siblings
-        let sibling = currentEl;
-        let nth = 1;
-        while (sibling = sibling.previousElementSibling) {
-            if (sibling.tagName === currentEl.tagName) {
-                nth++;
-            }
-        }
-        part += `:nth-of-type(${nth})`;
+        // Removed for better compatibility with dynamic content where positions change.
+        // If the selector is not unique enough, the user might need to adjust their selection.
+        // The current strategy relies more on classes and tag names.
+        // let sibling = currentEl;
+        // let nth = 1;
+        // while (sibling = sibling.previousElementSibling) {
+        //     if (sibling.tagName === currentEl.tagName) {
+        //         nth++;
+        //     }
+        // }
+        // part += `:nth-of-type(${nth})`;
 
 
         parts.unshift(part);
