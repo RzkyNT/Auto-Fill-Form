@@ -580,7 +580,6 @@ function createTriggerOverlay() {
         pointer-events: none;
     }
 
-    #smart-fill-trigger-container:hover .tooltip-content,
     #smart-fill-trigger-container.active .tooltip-content {
         opacity: 1;
         visibility: visible;
@@ -718,6 +717,14 @@ function createTriggerOverlay() {
     chrome.storage.local.set({ 'fullscreen-enabled': isFullscreen });
     // Update the button UI
     updateFullscreenButtonState();
+  });
+
+  // Add listener to close tooltip when clicking outside
+  document.addEventListener('click', (e) => {
+    // If the click is outside the trigger container and the container is active
+    if (!triggerContainer.contains(e.target) && triggerContainer.classList.contains('active')) {
+      triggerContainer.classList.remove('active');
+    }
   });
 }
 
