@@ -16,6 +16,8 @@ function debounce(func, delay) {
 function initializeSmartFillSession() {
   smartFillSession = {
     stopRequested: false,
+    stopSignalResolver: null, // New field to hold the resolve function
+    currentQuestionHash: null, // To prevent re-processing the same question
     totalSteps: 0,
     completedSteps: 0,
     currentEntry: null,
@@ -325,6 +327,11 @@ function createProgressOverlay() {
     if (smartFillSession) {
       smartFillSession.stopRequested = true;
       updateProgressOverlay("Cancellation requested", "Tunggu sampai AI berhenti");
+      // Resolve the promise to stop handleCustomProfile
+      if (smartFillSession.stopSignalResolver) {
+        smartFillSession.stopSignalResolver();
+        smartFillSession.stopSignalResolver = null;
+      }
     }
   });
 }
@@ -789,22 +796,22 @@ async function doSmartFill() {
         finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
         showToast('error', `An error occurred: ${error.message}`, 5000);
     } finally {
-        console.log("--- Custom Profile Smart Fill Completed ---");
-        if (quizContentObserver) { // Disconnect observer on completion/cancellation
-          quizContentObserver.disconnect();
-          quizContentObserver = null;
-          console.log("MutationObserver disconnected.");
-        }
+        console.log("--- Smart Fill Finally Block ---");
+        // Cleanup is now handled directly by handleCustomProfile when its stopPromise resolves.
+        // This block only cleans up general UI and resets session state.
         if (smartFillSession) {
-            if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
-                updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
-                updateProgressBar(1);
-                setTimeout(removeProgressOverlay, 600);
+            if (smartFillSession.stopRequested) {
+                 updateProgressOverlay("Smart fill stopped", "Smart form filling stopped by user.");
             } else {
-                setTimeout(removeProgressOverlay, 1500);
+                // This branch implies the continuous process might have completed without explicit stop,
+                // which is less likely for quizzes, but still cleans up.
+                updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
             }
+            // Ensure UI is removed
+            removeProgressOverlay();
         }
-        updateAiButtonState(false);
+        updateAiButtonState(false); // Reset button state
+        smartFillSession = null; // Clear session state for next run
     }
   } else {
     const isGForm = hostname === 'docs.google.com' && window.location.pathname.includes('/forms/');
@@ -852,16 +859,33 @@ async function doSmartFill() {
 async function processCurrentQuizState(profile) {
   try {
     if (smartFillSession?.stopRequested) {
-      throw new Error("Smart fill stopped by user.");
+      console.log("processCurrentQuizState: Stop requested.");
+      return; // Exit if stop is requested
     }
     
     clearKahootRecommendation(); // Just in case
     
     const questionElement = document.querySelector(profile.question);
-    const questionText = questionElement ? sanitizeQuizText(questionElement.textContent) : null;
+    const rawQuestionText = questionElement ? questionElement.textContent : null; // Get raw text to hash
 
+    if (!rawQuestionText) {
+      console.warn("processCurrentQuizState: Could not find question element or text. Waiting for next mutation.");
+      // If the question element is not found, it might be in an intermediate state.
+      // We don't throw an error here, just wait for the element to appear via mutation.
+      return;
+    }
+
+    const currentQuestionHash = btoa(encodeURIComponent(rawQuestionText)); // Simple hash for comparison
+    if (smartFillSession.currentQuestionHash === currentQuestionHash) {
+      console.log("processCurrentQuizState: Question text is the same. Skipping processing.");
+      return; // Do nothing if the question hasn't changed
+    }
+    smartFillSession.currentQuestionHash = currentQuestionHash; // Update hash
+
+    const questionText = sanitizeQuizText(rawQuestionText);
     if (!questionText) {
-        throw new Error("Could not find the question element using the saved selector. The page structure might have changed.");
+        console.warn("processCurrentQuizState: Sanitized question text is empty. Waiting for next mutation.");
+        return;
     }
 
     startHistoryEntry(questionText, "custom");
@@ -871,7 +895,8 @@ async function processCurrentQuizState(profile) {
     const options = answerElements.map(el => ({ label: sanitizeQuizText(el.textContent), element: el })).filter(opt => opt.label);
 
     if (!options.length) {
-        throw new Error("Could not find any answer elements using the saved selectors.");
+        console.warn("processCurrentQuizState: Could not find any answer elements using the saved selectors. Waiting for next mutation.");
+        return;
     }
     
     const prompt = `Question: "${questionText}"\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
@@ -898,7 +923,15 @@ async function processCurrentQuizState(profile) {
     updateProgressOverlay("Error", error.message);
     finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
     showToast('error', `An error occurred: ${error.message}`, 5000);
-    if (quizContentObserver) {
+    // On error, the process should stop
+    if (smartFillSession) {
+      smartFillSession.stopRequested = true;
+      if (smartFillSession.stopSignalResolver) {
+        smartFillSession.stopSignalResolver();
+        smartFillSession.stopSignalResolver = null;
+      }
+    }
+    if (quizContentObserver) { // Ensure observer is disconnected on error
       quizContentObserver.disconnect();
       quizContentObserver = null;
     }
@@ -908,16 +941,16 @@ async function processCurrentQuizState(profile) {
 async function handleCustomProfile(profile) {
   clearKahootRecommendation(); // Just in case
 
-  const questionElement = document.querySelector(profile.question);
-  if (!questionElement) {
-    throw new Error("Could not find the question element using the saved selector. The page structure might have changed.");
+  // We need to check if the initial question element is present to set up the observer target.
+  // If it's not present, we cannot proceed with this profile.
+  const initialQuestionElement = document.querySelector(profile.question);
+  if (!initialQuestionElement) {
+    throw new Error("Initial question element not found. Profile may be invalid or page not ready.");
   }
 
   // Find a suitable element to observe.
-  // We'll observe the parent of the question element, or a common ancestor if available.
-  const targetNode = questionElement.parentElement || document.body; // Fallback to body if parent is null
+  const targetNode = initialQuestionElement.parentElement || document.body; // Fallback to body if parent is null
 
-  // Ensure smartFillSession and progress overlay are initialized
   ensureSmartFillSession();
   const showOverlay = await getOverlayPreference();
   if (showOverlay) {
@@ -926,13 +959,21 @@ async function handleCustomProfile(profile) {
     removeProgressOverlay();
   }
 
-  // This will be the callback for the MutationObserver
+  // Create a promise that resolves when stopRequested is true
+  const stopPromise = new Promise(resolve => {
+    smartFillSession.stopSignalResolver = resolve;
+  });
+
   const mutationCallback = (mutationsList, observer) => {
     // Check if smart fill was stopped by user or an error occurred
     if (smartFillSession?.stopRequested) {
       observer.disconnect();
       quizContentObserver = null;
-      removeProgressOverlay();
+      removeProgressOverlay(); // Also remove overlay on stop
+      if (smartFillSession.stopSignalResolver) {
+        smartFillSession.stopSignalResolver();
+        smartFillSession.stopSignalResolver = null;
+      }
       return;
     }
     // Debounce the processing of the quiz state to avoid excessive calls
@@ -954,8 +995,20 @@ async function handleCustomProfile(profile) {
   });
   console.log("MutationObserver started on:", targetNode);
 
-  // Initial processing of the current quiz state
+  // Initial processing of the current quiz state (with hashing)
   await processCurrentQuizState(profile);
+
+  // Wait until a stop is requested (e.g., by the stop button or an internal error)
+  await stopPromise;
+
+  // Cleanup after stopPromise resolves
+  if (quizContentObserver) {
+    quizContentObserver.disconnect();
+    quizContentObserver = null;
+    console.log("MutationObserver disconnected.");
+  }
+  removeProgressOverlay(); // Ensure overlay is removed
+  updateAiButtonState(false); // Reset button state
 }
 
 
