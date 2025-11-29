@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Smart Filler History</title>
+  <style>
+    :root {
+      --color-accent: #25D366;
+      --color-accent-alt: #2BE07B;
+      --color-bg: #04070D;
+      --color-surface: #0B0F14;
+      --color-surface-alt: #11161C;
+      --color-text: #F2F4F6;
+      --color-muted: rgba(242, 244, 246, 0.72);
+      --color-border: rgba(255, 255, 255, 0.06);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--color-bg);
+      color: var(--color-text);
+      padding: 30px;
+    }
+    .header {
+      display: flex;
+      gap: 15px;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: 20px;
+    }
+    h1 {
+        font-size: 2em;
+        flex-grow: 1;
+    }
+    button {
+        padding: 10px 18px;
+        border-radius: 10px;
+        font-size: 1em;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: background-color 0.2s ease;
+        white-space: nowrap;
+    }
+    #back-button {
+      background: var(--color-surface-alt);
+      color: var(--color-text);
+      border-color: var(--color-border);
+    }
+    #back-button:hover {
+      border-color: var(--color-text);
+    }
+    .history-clear {
+      background: transparent;
+      color: #ff6b7a;
+      border: 1px solid rgba(255,107,122,0.6);
+    }
+    .history-clear:hover {
+      background: rgba(255,107,122,0.12);
+    }
+    #search-history {
+      width: 100%;
+      max-width: 400px;
+      padding: 10px 15px;
+      border-radius: 10px;
+      border: 1px solid var(--color-border);
+      font-size: 1em;
+      background: var(--color-surface-alt);
+      color: var(--color-text);
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    #search-history:focus {
+      border-color: var(--color-accent);
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(37,211,102,0.25);
+    }
+    #history-container {
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      background: var(--color-surface);
+      overflow: hidden;
+    }
+    .history-group-card {
+      background: var(--color-surface);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .history-group-card:last-child {
+      border-bottom: none;
+    }
+    .history-group-card[open] > .history-group-summary {
+      border-bottom: 1px solid var(--color-border);
+      background-color: var(--color-surface-alt);
+    }
+    .history-group-summary {
+      padding: 16px 20px;
+      font-size: 1.1em;
+      font-weight: 600;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .history-group-summary::-webkit-details-marker { display: none; }
+    .history-group-summary::after {
+      content: '+';
+      font-size: 1.4em;
+      font-weight: normal;
+      transition: transform 0.2s ease;
+      color: var(--color-muted);
+    }
+    .history-group-card[open] > .history-group-summary::after {
+      transform: rotate(45deg);
+    }
+    .history-table-container {
+      padding: 0;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .history-table-container table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9em;
+    }
+    .history-table-container th, .history-table-container td {
+      padding: 12px 20px;
+      text-align: left;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .history-table-container th {
+      background-color: var(--color-surface-alt);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+    }
+    .history-table-container td {
+      color: var(--color-muted);
+      word-break: break-word;
+      vertical-align: top;
+    }
+    .history-table-container tr:last-child td {
+      border-bottom: none;
+    }
+    .history-empty {
+      padding: 40px;
+      text-align: center;
+      color: var(--color-muted);
+      font-size: 1.1em;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button id="back-button">Back</button>
+    <h1>Smart Fill History</h1>
+    <input type="search" id="search-history" placeholder="Search in question, answer, or url...">
+    <button id="clear-history" class="history-clear">Clear All History</button>
+  </div>
+  <div id="history-container"></div>
+  <script src="history.js"></script>
+</body>
+</html>

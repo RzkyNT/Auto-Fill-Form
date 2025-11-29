@@ -190,62 +190,19 @@
     }
 
     .history-group {
-      max-height: 260px;
+      max-height: none; /* Allow it to grow */
     }
 
     .history-list {
-      list-style: none;
-      max-height: 220px;
+      max-height: 350px; /* Set max height for the container */
       overflow-y: auto;
       padding: 0;
       margin: 0;
       border: 1px solid var(--color-border);
       border-radius: 12px;
-      background: var(--color-surface-alt);
+      background: var(--color-surface);
     }
-
-    .history-entry {
-      padding: 12px;
-      border-bottom: 1px solid var(--color-border);
-      color: var(--color-text);
-    }
-
-    .history-entry:last-child {
-      border-bottom: none;
-    }
-
-    .history-empty {
-      padding: 18px;
-      text-align: center;
-      color: var(--color-muted);
-    }
-
-    .history-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.85em;
-      margin-bottom: 6px;
-      color: var(--color-muted);
-    }
-
-    .history-title {
-      font-weight: 600;
-      color: var(--color-text);
-    }
-
-    .history-question,
-    .history-answer,
-    .history-status {
-      font-size: 0.85em;
-      margin-bottom: 4px;
-    }
-
-    .history-answer strong,
-    .history-question strong,
-    .history-status strong {
-      color: var(--color-text);
-    }
-
+    
     .history-clear {
       background: transparent;
       color: #ff6b7a;
@@ -255,6 +212,74 @@
 
     .history-clear:hover {
       background: rgba(255,107,122,0.12);
+    }
+    
+    /* New History Card Styles */
+    .history-group-card {
+      background: var(--color-surface);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .history-group-card:last-child {
+      border-bottom: none;
+    }
+    .history-group-card[open] > .history-group-summary {
+      border-bottom: 1px solid var(--color-border);
+      background-color: var(--color-surface-alt);
+    }
+    .history-group-summary {
+      padding: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      list-style: none; /* Remove default marker */
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .history-group-summary::-webkit-details-marker {
+      display: none; /* Hide for Safari */
+    }
+    .history-group-summary::after {
+      content: '+';
+      font-size: 1.2em;
+      font-weight: normal;
+      transition: transform 0.2s ease;
+      color: var(--color-muted);
+    }
+    .history-group-card[open] > .history-group-summary::after {
+      transform: rotate(45deg);
+    }
+    .history-table-container {
+      padding: 0;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .history-table-container table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8em;
+    }
+    .history-table-container th, .history-table-container td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .history-table-container th {
+      background-color: var(--color-surface-alt);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+    }
+    .history-table-container td {
+      color: var(--color-muted);
+      word-break: break-word;
+    }
+    .history-table-container tr:last-child td {
+      border-bottom: none;
+    }
+    .history-empty {
+      padding: 20px;
+      text-align: center;
+      color: var(--color-muted);
     }
 
     .hidden {
@@ -363,7 +388,32 @@
 
     <div class="settings-group">
       <h4>Settings</h4>
-      <label>
+      <label class="switch">
+      <input type="checkbox" id="dark-mode-toggle" />
+      <span class="slider"></span>
+      <div class="theme-icon">
+        <svg id="theme-icon-light" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+        </svg>
+        <svg id="theme-icon-dark" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2"/>
+          <path d="M12 20v2"/>
+          <path d="m4.93 4.93 1.41 1.41"/>
+          <path d="m17.66 17.66 1.41 1.41"/>
+          <path d="M2 12h2"/>
+          <path d="M20 12h2"/>
+          <path d="m6.34 17.66-1.41 1.41"/>
+          <path d="m19.07 4.93-1.41 1.41"/>
+        </svg>
+      </div>
+    </label>
+
+      <label class="switch">
+        <input type="checkbox" id="overlay-toggle" checked />
+        <span>Show smart-fill overlay</span>
+      </label>
+      <label class="switch">
         <input type="checkbox" id="auto-run" />
         Auto-run on page load
       </label>
@@ -407,29 +457,16 @@
       <button id="save-openai" class="save-button">Save OpenAI Settings</button>
     </div>
 
-    <div class="settings-group theme-group">
-      <h4>Appearance</h4>
-      <label class="switch">
-        <input type="checkbox" id="dark-mode-toggle" />
-        <span>Dark mode</span>
-      </label>
-      <label class="switch">
-        <input type="checkbox" id="overlay-toggle" checked />
-        <span>Show smart-fill overlay</span>
-      </label>
-    </div>
-
     <div class="settings-group">
       <h4>Custom Website Profiles</h4>
       <p class="history-subhead">Create custom profiles to use the smart filler on any website by selecting the question and answer elements.</p>
       <button id="manage-profiles">Manage Profiles</button>
     </div>
 
-    <div class="settings-group history-group">
+    <div class="settings-group">
       <h4>Smart Fill History</h4>
-      <p class="history-subhead">Mengedepankan prompt-text dan menyimpan pertanyaan/ jawaban terakhir.</p>
-      <ul id="history-list" class="history-list"></ul>
-      <button id="clear-history" class="save-button history-clear">Hapus Riwayat</button>
+      <p class="history-subhead">View, search, and manage your smart fill history on a dedicated page.</p>
+      <button id="view-history">View History</button>
     </div>
   </div> <!-- End of main-view -->
 
