@@ -434,6 +434,38 @@ function saveSmartFillHistory(entry) {
 }
 
 /**
+ * Retrieves the list of answered question hashes from local storage.
+ * @returns {Promise<string[]>} A promise that resolves with an array of hashes.
+ */
+function getAnsweredQuestionHashes() {
+  return new Promise(resolve => {
+    chrome.storage.local.get({ answeredQuestionHashes: [] }, (result) => {
+      resolve(result.answeredQuestionHashes || []);
+    });
+  });
+}
+
+/**
+ * Adds a hash to the list of answered questions in local storage.
+ * Keeps the list at a maximum of 200 entries.
+ * @param {string} newHash The hash to add.
+ * @returns {Promise<void>}
+ */
+async function addAnsweredQuestionHash(newHash) {
+  if (!newHash) return;
+  const hashes = await getAnsweredQuestionHashes();
+  if (!hashes.includes(newHash)) {
+    const updatedHashes = [newHash, ...hashes].slice(0, 200);
+    return new Promise(resolve => {
+      chrome.storage.local.set({ answeredQuestionHashes: updatedHashes }, () => {
+        console.log(`Question hash saved as answered.`);
+        resolve();
+      });
+    });
+  }
+}
+
+/**
  * Injects CSS to re-enable user selection on pages that disable it.
  */
 function enableUserSelect() {
@@ -876,6 +908,18 @@ async function processCurrentQuizState(profile) {
     }
 
     const currentQuestionHash = btoa(encodeURIComponent(rawQuestionText)); // Simple hash for comparison
+    
+    const answeredHashes = await getAnsweredQuestionHashes();
+    if (answeredHashes.includes(currentQuestionHash)) {
+      console.log("Question already answered in a previous session. Skipping.");
+      // Optional: Visual feedback that it's skipped
+      if (questionElement) {
+        questionElement.style.border = "2px solid #28a745"; // Green border
+        setTimeout(() => { if(questionElement) questionElement.style.border = ""; }, 2000);
+      }
+      return;
+    }
+
     if (smartFillSession.currentQuestionHash === currentQuestionHash) {
       console.log("processCurrentQuizState: Question text is the same. Skipping processing.");
       return; // Do nothing if the question hasn't changed
@@ -913,6 +957,7 @@ async function processCurrentQuizState(profile) {
     if (target) {
         target.element.click();
         finalizeHistoryEntry("answered (custom)", target.label);
+        await addAnsweredQuestionHash(currentQuestionHash);
     } else {
         finalizeHistoryEntry("no match (custom)", aiAnswer);
     }
@@ -1047,11 +1092,22 @@ async function processGoogleFormQuestion(q, index, total) {
     console.warn("Could not find question text for this item. Skipping.");
     return;
   }
+
+  const questionHash = btoa(encodeURIComponent(questionText));
+  const answeredHashes = await getAnsweredQuestionHashes();
+  if (answeredHashes.includes(questionHash)) {
+    console.log("Question already answered. Skipping.");
+    // Visual indicator for G-Forms
+    q.style.transition = 'background-color 0.5s ease';
+    q.style.backgroundColor = 'rgba(232, 245, 233, 1)'; // A light green from Google's palette
+    return;
+  }
+
   startHistoryEntry(questionText);
   console.log(`Question Text: "${questionText}"`);
 
   try {
-    await fillGoogleFormQuestion(q, questionText);
+    await fillGoogleFormQuestion(q, questionText, questionHash);
   } catch (error) {
     finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
     throw error;
@@ -1064,7 +1120,7 @@ async function processGoogleFormQuestion(q, index, total) {
   }
 }
 
-async function fillGoogleFormQuestion(q, questionText) {
+async function fillGoogleFormQuestion(q, questionText, questionHash) {
   try {
     const choices = q.querySelectorAll('div[role="radio"], div[role="checkbox"]');
     if (choices.length > 0) {
@@ -1092,6 +1148,7 @@ async function fillGoogleFormQuestion(q, questionText) {
         const matchedLabel = (targetChoice.getAttribute('aria-label') || targetChoice.textContent || "").trim();
         targetChoice.click();
         finalizeHistoryEntry("answered (choice)", matchedLabel || aiAnswer);
+        await addAnsweredQuestionHash(questionHash);
       } else {
         finalizeHistoryEntry("no match", aiAnswer);
       }
@@ -1110,6 +1167,7 @@ async function fillGoogleFormQuestion(q, questionText) {
       textInput.value = aiResponse;
       textInput.dispatchEvent(new Event('input', { bubbles: true }));
       finalizeHistoryEntry("answered (text input)", aiResponse);
+      await addAnsweredQuestionHash(questionHash);
     }
   } catch (error) {
     throw error;
@@ -1122,6 +1180,20 @@ async function handleQuizPlatforms(host) {
   if (!questionText) {
     throw new Error("Tidak dapat menemukan pertanyaan pada halaman ini.");
   }
+
+  const questionHash = btoa(encodeURIComponent(questionText));
+  const answeredHashes = await getAnsweredQuestionHashes();
+  if (answeredHashes.includes(questionHash)) {
+      console.log("Question already answered. Skipping.");
+      showToast('info', 'Pertanyaan ini sudah dijawab sebelumnya.', 3000);
+      // We need to stop the process gracefully
+      if (smartFillSession) {
+          removeProgressOverlay();
+      }
+      updateAiButtonState(false);
+      return;
+  }
+
   smartFillSession.totalSteps = 1;
   const platformName = host.includes("wayground.com")
     ? "wayground.com"
@@ -1148,6 +1220,7 @@ async function handleQuizPlatforms(host) {
       target.element.click();
       finalizeHistoryEntry("answered (quiz)", target.label);
     }
+    await addAnsweredQuestionHash(questionHash);
   } else {
     finalizeHistoryEntry("no match", aiAnswer);
   }

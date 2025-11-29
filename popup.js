@@ -49,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   
   // Load API keys
-  chrome.storage.local.get(["apiKeys", "aiProvider", "openAiConfig", "themeMode", "showOverlay"], (result) => {
+  chrome.storage.local.get(["apiKeys", "aiProvider", "openAiConfig", "themeMode", "showOverlay", "smartFillHistory"], (result) => {
     if (result.apiKeys && Array.isArray(result.apiKeys)) {
       apiKeysTextarea.value = result.apiKeys.map(item => item.key).join('\n');
     }
