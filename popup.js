@@ -3,6 +3,7 @@ document.getElementById("fill").addEventListener("click", () => triggerFill("fak
 document.getElementById("smart-fill").addEventListener("click", () => triggerFill("fakeFiller:smartFill"));
 
 async function triggerFill(eventName) {
+  console.log(`Triggering event: ${eventName}`);
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   chrome.scripting.executeScript({
     target: { tabId: tab.id },
@@ -29,6 +30,16 @@ const overlayToggle = document.getElementById("overlay-toggle");
 const htmlRoot = document.documentElement;
 const historyList = document.getElementById("history-list");
 const clearHistoryButton = document.getElementById("clear-history");
+const manageProfilesButton = document.getElementById("manage-profiles");
+
+// View Elements
+const mainView = document.getElementById('main-view');
+const profilesView = document.getElementById('profiles-view');
+const backToSettingsButton = document.getElementById('back-to-settings');
+
+// Profile Elements
+const profilesList = document.getElementById('profiles-list');
+const addNewProfileButton = document.getElementById('add-new-profile');
 
 // Load all settings on popup open
 document.addEventListener("DOMContentLoaded", () => {
@@ -94,6 +105,37 @@ function applyTheme(isDark) {
   htmlRoot.classList.toggle("light", !isDark);
 }
 
+function renderHistory(history) {
+  if (!historyList) return;
+  historyList.innerHTML = "";
+  if (!history || history.length === 0) {
+    const empty = document.createElement("li");
+    empty.textContent = "Belum ada riwayat smart fill.";
+    empty.className = "history-empty";
+    historyList.appendChild(empty);
+    return;
+  }
+
+  history.forEach(entry => {
+    const li = document.createElement("li");
+    li.className = "history-entry";
+    li.innerHTML = `
+      <div class="history-row">
+        <span class="history-title">${entry.formName || "Unknown form"}</span>
+        <span class="history-time">${new Date(entry.timestamp).toLocaleString()}</span>
+      </div>
+      <div class="history-question"><strong>Pertanyaan:</strong> ${entry.question || "Tidak ada pertanyaan"}</div>
+      <div class="history-answer"><strong>Jawaban:</strong> ${entry.answer || "Tidak ada jawaban"}</div>
+      <div class="history-status"><strong>Status:</strong> ${entry.status}</div>
+      <details>
+        <summary>Detail proses</summary>
+        ${Array.isArray(entry.events) ? entry.events.map(evt => `<div class="history-event">${new Date(evt.timestamp).toLocaleTimeString()} — ${evt.label}${evt.detail ? `: ${evt.detail}` : ""}</div>`).join('') : ''}
+      </details>
+    `;
+    historyList.appendChild(li);
+  });
+}
+
 // Save API keys
 saveKeysButton.addEventListener("click", () => {
   const keysString = apiKeysTextarea.value;
@@ -145,33 +187,123 @@ clearHistoryButton.addEventListener("click", () => {
   });
 });
 
-function renderHistory(history) {
-  if (!historyList) return;
-  historyList.innerHTML = "";
-  if (!history || history.length === 0) {
-    const empty = document.createElement("li");
-    empty.textContent = "Belum ada riwayat smart fill.";
-    empty.className = "history-empty";
-    historyList.appendChild(empty);
-    return;
-  }
+// Event Listeners for View Switching
+manageProfilesButton.addEventListener('click', () => {
+  showView(profilesView);
+  loadProfiles(); // Load profiles when the view is activated
+});
 
-  history.forEach(entry => {
-    const li = document.createElement("li");
-    li.className = "history-entry";
-    li.innerHTML = `
-      <div class="history-row">
-        <span class="history-title">${entry.formName || "Unknown form"}</span>
-        <span class="history-time">${new Date(entry.timestamp).toLocaleString()}</span>
-      </div>
-      <div class="history-question"><strong>Pertanyaan:</strong> ${entry.question || "Tidak ada pertanyaan"}</div>
-      <div class="history-answer"><strong>Jawaban:</strong> ${entry.answer || "Tidak ada jawaban"}</div>
-      <div class="history-status"><strong>Status:</strong> ${entry.status}</div>
-      <details>
-        <summary>Detail proses</summary>
-        ${Array.isArray(entry.events) ? entry.events.map(evt => `<div class="history-event">${new Date(evt.timestamp).toLocaleTimeString()} — ${evt.label}${evt.detail ? `: ${evt.detail}` : ""}</div>`).join('') : ''}
-      </details>
-    `;
-    historyList.appendChild(li);
+backToSettingsButton.addEventListener('click', () => {
+  showView(mainView);
+});
+
+function showView(viewElement) {
+  mainView.classList.remove('active');
+  profilesView.classList.remove('active');
+  viewElement.classList.add('active');
+}
+
+
+// --- Profiles Logic (from profiles.js) ---
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab;
+}
+
+function loadProfiles() {
+  chrome.storage.local.get({ customProfiles: {} }, (result) => {
+    const profiles = result.customProfiles;
+    profilesList.innerHTML = '';
+    if (Object.keys(profiles).length === 0) {
+      const li = document.createElement('li');
+      li.textContent = 'No custom profiles yet.';
+      li.style.textAlign = 'center';
+      li.style.padding = '20px';
+      profilesList.appendChild(li);
+      return;
+    }
+
+    for (const hostname in profiles) {
+      const profile = profiles[hostname];
+      const li = document.createElement('li');
+      li.className = 'profile-card';
+      li.innerHTML = `
+        <div class="hostname">${hostname}</div>
+        <div class="actions">
+          <button class="button-danger" data-hostname="${hostname}">Delete</button>
+        </div>
+      `;
+      profilesList.appendChild(li);
+    }
   });
 }
+
+profilesList.addEventListener('click', (e) => {
+  if (e.target.classList.contains('button-danger')) {
+    const hostname = e.target.dataset.hostname;
+    Swal.fire({
+      title: 'Are you sure?',
+      text: `Do you want to delete the profile for ${hostname}?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, delete it!',
+      cancelButtonText: 'No, cancel'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        chrome.storage.local.get({ customProfiles: {} }, (res) => {
+          const profiles = res.customProfiles;
+          delete profiles[hostname];
+          chrome.storage.local.set({ customProfiles: profiles }, () => {
+            loadProfiles();
+            Swal.fire('Deleted!', 'The profile has been deleted.', 'success');
+          });
+        });
+      }
+    });
+  }
+});
+
+addNewProfileButton.addEventListener('click', async () => {
+  const tab = await getActiveTab();
+  if (!tab || !tab.url) {
+    Swal.fire('Error', 'Could not find an active tab. Please open a tab and try again.', 'error');
+    return;
+  }
+  
+  if (tab.url.startsWith('chrome://')) {
+      Swal.fire('Error', 'Cannot create profiles for Chrome system pages.', 'error');
+      return;
+  }
+
+  const hostname = new URL(tab.url).hostname;
+
+  // Send a message to the background script to start the process
+  chrome.runtime.sendMessage({
+    action: 'startProfileCreation',
+    tabId: tab.id,
+    hostname: hostname,
+  });
+
+  // Close the popup as the rest of the workflow is handled on the content page
+  window.close();
+});
+
+function startElementSelection(tabId, options) {
+  return new Promise((resolve, reject) => {
+      // Send a message to the content script to start selection mode
+      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: options }, (response) => {
+          if (chrome.runtime.lastError) {
+              return reject(new Error('Could not connect to the page. Please reload the tab and try again.'));
+          }
+          if (response.error) {
+              return reject(new Error(response.error));
+          }
+          if(response.selector || response.selectors) {
+              resolve(response.selector || response.selectors);
+          } else {
+              reject(new Error('Selection was cancelled or failed.'));
+          }
+      });
+  });
+}
+

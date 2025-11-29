@@ -22,5 +22,11 @@
       "matches": ["<all_urls>"],
       "js": ["utils.js", "content.js"]
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["vendor/sweetalert2/sweetalert2.min.css", "vendor/sweetalert2/sweetalert2@11.js"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }

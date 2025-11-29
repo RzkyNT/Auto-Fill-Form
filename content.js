@@ -5,6 +5,13 @@ window.addEventListener("fakeFiller:smartFill", doSmartFill);
 let smartFillSession = null;
 let answerToastTimer = null;
 let kahootHighlightedOption = null;
+let quizContentObserver = null;
+let debounceTimer = null;
+
+function debounce(func, delay) {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(func, delay);
+}
 
 function initializeSmartFillSession() {
   smartFillSession = {
@@ -59,7 +66,7 @@ function showToast(icon, title, timer = 3000) {
   });
 }
 
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
   chrome.storage.sync.get(["autoRun"], (result) => {
     if (result.autoRun) {
       setTimeout(doFakeFill, 500);
@@ -70,7 +77,7 @@ window.addEventListener('load', () => {
   injectSweetAlert2();
 
   // Create the UI first
-  createTriggerOverlay();
+  await createTriggerOverlay();
   enableUserSelect();
 
   // Always update the button state on load, but do not try to enter fullscreen automatically.
@@ -467,7 +474,7 @@ function updateFullscreenButtonState() {
  */
 function updateAiButtonState(isProcessing) {
   const runAiButton = document.getElementById('run-ai-button');
-  if (!runAiButton) return;
+  if (!runAiButton) return; // Do nothing if the button isn't on the page
 
   if (isProcessing) {
     runAiButton.classList.add('processing');
@@ -483,15 +490,22 @@ function updateAiButtonState(isProcessing) {
 /**
  * Creates a floating action button to trigger the Smart Fill.
  */
-function createTriggerOverlay() {
+async function createTriggerOverlay() {
+  // Fetch custom profiles to determine if an overlay should be created
+  const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
   const host = window.location.hostname;
+  const hasCustomProfile = !!customProfiles[host];
+
   const isGForm = host === 'docs.google.com' && window.location.pathname.includes('/forms/');
   const isWayground = host.includes('wayground.com');
   const isQuizziz = host.includes('quizziz.com');
   const isKahoot = host.includes('kahoot.it') || host.includes('play.kahoot.it');
   const isCbt = host === '115.124.76.241';
 
-  if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) return;
+  const shouldShowOverlay = hasCustomProfile || isGForm || isWayground || isQuizziz || isKahoot || isCbt;
+
+  if (!shouldShowOverlay) return;
+
   // Check for the container ID instead of the button ID
   if (document.getElementById('smart-fill-trigger-container')) return;
 
@@ -700,7 +714,7 @@ function createTriggerOverlay() {
       // If AI is not running, start it.
       doSmartFill();
     }
-  });
+  }, { capture: true });
 
   fullscreenButton.addEventListener('click', (e) => {
     e.preventDefault();
@@ -747,6 +761,7 @@ function handleFullscreen() {
  * Fills forms intelligently using Gemini AI.
  */
 async function doSmartFill() {
+  console.log("doSmartFill function initiated in content script.");
   updateAiButtonState(true); // Set button to "Cancel" state
   console.log("--- Smart Fill Initialized ---");
   ensureSmartFillSession();
@@ -758,47 +773,191 @@ async function doSmartFill() {
   }
   let encounteredError = null;
 
-  const host = window.location.hostname;
-  const isGForm = host === 'docs.google.com' && window.location.pathname.includes('/forms/');
-  const isWayground = host.includes('wayground.com');
-  const isQuizziz = host.includes('quizziz.com');
-  const isKahoot = host.includes('kahoot.it') || host.includes('play.kahoot.it');
-  const isCbt = host === '115.124.76.241';
+  const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
+  const hostname = window.location.hostname;
+  const customProfile = customProfiles[hostname];
 
-  if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) {
-    showToast('error', "Smart Fill currently supports Google Forms, wayground.com, quizziz.com, kahoot.it, and the CBT instance.", 6000);
-    console.warn("Smart Fill aborted: Unsupported host.");
-    removeProgressOverlay();
-    updateAiButtonState(false); // Reset button state
-    return;
-  }
-
-  try {
-    if (isGForm) {
-      await handleGoogleForms();
-    } else {
-      await handleQuizPlatforms(host);
+  if (customProfile) {
+    console.log(`Custom profile found for ${hostname}.`);
+    try {
+        await handleCustomProfile(customProfile);
+    } catch (error) {
+        encounteredError = error;
+        // Error handling is duplicated, might refactor later
+        console.error("Error during Custom Profile Smart Fill:", error);
+        updateProgressOverlay("Error", error.message);
+        finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
+        showToast('error', `An error occurred: ${error.message}`, 5000);
+    } finally {
+        console.log("--- Custom Profile Smart Fill Completed ---");
+        if (quizContentObserver) { // Disconnect observer on completion/cancellation
+          quizContentObserver.disconnect();
+          quizContentObserver = null;
+          console.log("MutationObserver disconnected.");
+        }
+        if (smartFillSession) {
+            if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
+                updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
+                updateProgressBar(1);
+                setTimeout(removeProgressOverlay, 600);
+            } else {
+                setTimeout(removeProgressOverlay, 1500);
+            }
+        }
+        updateAiButtonState(false);
     }
-  } catch (error) {
-    encounteredError = error;
-    console.error("Error during Smart Fill:", error);
-    updateProgressOverlay("Error", error.message);
-    finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
-    showToast('error', `An error occurred while using the AI provider: ${error.message}`, 5000);
-  } finally {
-    console.log("--- Smart Fill Completed ---");
-    if (smartFillSession) {
-      if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
-        updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
-        updateProgressBar(1);
-        setTimeout(removeProgressOverlay, 600);
+  } else {
+    const isGForm = hostname === 'docs.google.com' && window.location.pathname.includes('/forms/');
+    const isWayground = hostname.includes('wayground.com');
+    const isQuizziz = hostname.includes('quizziz.com');
+    const isKahoot = hostname.includes('kahoot.it') || hostname.includes('play.kahoot.it');
+    const isCbt = hostname === '115.124.76.241';
+
+    if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) {
+      showToast('error', "Smart Fill currently supports Google Forms, wayground.com, quizziz.com, kahoot.it, and the CBT instance.", 6000);
+      console.warn("Smart Fill aborted: Unsupported host.");
+      removeProgressOverlay();
+      updateAiButtonState(false); // Reset button state
+      return;
+    }
+
+    try {
+      if (isGForm) {
+        await handleGoogleForms();
       } else {
-        setTimeout(removeProgressOverlay, 1500);
+        await handleQuizPlatforms(hostname);
       }
+    } catch (error) {
+      encounteredError = error;
+      console.error("Error during Smart Fill:", error);
+      updateProgressOverlay("Error", error.message);
+      finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
+      showToast('error', `An error occurred while using the AI provider: ${error.message}`, 5000);
+    } finally {
+      console.log("--- Smart Fill Completed ---");
+      if (smartFillSession) {
+        if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
+          updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
+          updateProgressBar(1);
+          setTimeout(removeProgressOverlay, 600);
+        } else {
+          setTimeout(removeProgressOverlay, 1500);
+        }
+      }
+      updateAiButtonState(false); // Reset button state when done
     }
-    updateAiButtonState(false); // Reset button state when done
   }
 }
+
+async function processCurrentQuizState(profile) {
+  try {
+    if (smartFillSession?.stopRequested) {
+      throw new Error("Smart fill stopped by user.");
+    }
+    
+    clearKahootRecommendation(); // Just in case
+    
+    const questionElement = document.querySelector(profile.question);
+    const questionText = questionElement ? sanitizeQuizText(questionElement.textContent) : null;
+
+    if (!questionText) {
+        throw new Error("Could not find the question element using the saved selector. The page structure might have changed.");
+    }
+
+    startHistoryEntry(questionText, "custom");
+    updateProgressOverlay("Listening to question", questionText);
+    
+    const answerElements = Array.from(document.querySelectorAll(profile.answers.join(',')));
+    const options = answerElements.map(el => ({ label: sanitizeQuizText(el.textContent), element: el })).filter(opt => opt.label);
+
+    if (!options.length) {
+        throw new Error("Could not find any answer elements using the saved selectors.");
+    }
+    
+    const prompt = `Question: "${questionText}"\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
+    console.log("Sending Prompt to Background:", prompt);
+    updateProgressOverlay("Consulting AI provider...", questionText);
+
+    const aiAnswer = await getAiResponse(prompt);
+    console.log("AI Answer received:", aiAnswer);
+    console.log("Comparing against options:", options.map(o => o.label));
+    updateProgressOverlay("Matching AI response...", aiAnswer);
+
+    const target = matchOption(options, aiAnswer);
+
+    if (target) {
+        target.element.click();
+        finalizeHistoryEntry("answered (custom)", target.label);
+    } else {
+        finalizeHistoryEntry("no match (custom)", aiAnswer);
+    }
+    updateProgressBar(1);
+
+  } catch (error) {
+    console.error("Error during processing quiz state:", error);
+    updateProgressOverlay("Error", error.message);
+    finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
+    showToast('error', `An error occurred: ${error.message}`, 5000);
+    if (quizContentObserver) {
+      quizContentObserver.disconnect();
+      quizContentObserver = null;
+    }
+  }
+}
+
+async function handleCustomProfile(profile) {
+  clearKahootRecommendation(); // Just in case
+
+  const questionElement = document.querySelector(profile.question);
+  if (!questionElement) {
+    throw new Error("Could not find the question element using the saved selector. The page structure might have changed.");
+  }
+
+  // Find a suitable element to observe.
+  // We'll observe the parent of the question element, or a common ancestor if available.
+  const targetNode = questionElement.parentElement || document.body; // Fallback to body if parent is null
+
+  // Ensure smartFillSession and progress overlay are initialized
+  ensureSmartFillSession();
+  const showOverlay = await getOverlayPreference();
+  if (showOverlay) {
+    createProgressOverlay();
+  } else {
+    removeProgressOverlay();
+  }
+
+  // This will be the callback for the MutationObserver
+  const mutationCallback = (mutationsList, observer) => {
+    // Check if smart fill was stopped by user or an error occurred
+    if (smartFillSession?.stopRequested) {
+      observer.disconnect();
+      quizContentObserver = null;
+      removeProgressOverlay();
+      return;
+    }
+    // Debounce the processing of the quiz state to avoid excessive calls
+    debounce(() => processCurrentQuizState(profile), 500);
+  };
+
+  // Disconnect any existing observer before creating a new one
+  if (quizContentObserver) {
+    quizContentObserver.disconnect();
+  }
+
+  // Create and start the MutationObserver
+  quizContentObserver = new MutationObserver(mutationCallback);
+  quizContentObserver.observe(targetNode, {
+    childList: true, // Observe direct children additions/removals
+    subtree: true,   // Observe all descendants
+    attributes: true, // Observe attribute changes (e.g., class, id)
+    characterData: true, // Observe changes to text content
+  });
+  console.log("MutationObserver started on:", targetNode);
+
+  // Initial processing of the current quiz state
+  await processCurrentQuizState(profile);
+}
+
 
 function getOverlayPreference() {
   return new Promise(resolve => {
@@ -945,29 +1104,67 @@ async function handleQuizPlatforms(host) {
 function matchOption(options, aiAnswer) {
   const normalizedAnswer = normalizeQuizText(aiAnswer);
   if (!normalizedAnswer) return null;
+
+  let bestMatch = null;
+  let maxOverlapScore = -1; // Use a score to pick the best match
+
   for (const option of options) {
     const normalizedLabel = normalizeQuizText(option.label);
     if (!normalizedLabel) continue;
-    if (
-      normalizedLabel === normalizedAnswer ||
-      normalizedLabel.includes(normalizedAnswer) ||
-      normalizedAnswer.includes(normalizedLabel)
-    ) {
+
+    // Direct match or strong inclusion checks (highest priority)
+    if (normalizedLabel === normalizedAnswer) {
+      return option; // Exact match
+    }
+    if (normalizedAnswer.includes(normalizedLabel)) {
+      // AI answer contains the option label (e.g., AI: "The answer is Option A", Label: "Option A")
       return option;
     }
-  }
+    if (normalizedLabel.includes(normalizedAnswer)) {
+      // Option label contains the AI answer (e.g., AI: "Option A", Label: "Option A with more text")
+      // This is less common but possible, prioritize if it's the only strong match
+      bestMatch = option; // Keep this as a potential best match for now, could be overwritten
+      maxOverlapScore = Infinity; // Give it a very high score
+      continue;
+    }
 
-  const answerTokens = normalizedAnswer.split(/\s+/).filter(Boolean);
-  if (answerTokens.length > 1) {
-    for (const option of options) {
-      const normalizedLabel = normalizeQuizText(option.label);
-      if (!normalizedLabel) continue;
-      if (answerTokens.every(token => normalizedLabel.includes(token))) {
-        return option;
+    // Word overlap check for more flexible matching
+    const answerWords = normalizedAnswer.split(' ').filter(word => word.length > 1); // Filter short words
+    const labelWords = normalizedLabel.split(' ').filter(word => word.length > 1);
+
+    if (answerWords.length === 0 || labelWords.length === 0) continue;
+
+    let currentOverlap = 0;
+    for (const aWord of answerWords) {
+      if (labelWords.includes(aWord)) {
+        currentOverlap++;
       }
+    }
+    
+    // Calculate a score for this option
+    // Consider both the number of shared words and the proportion of words matched
+    let score = currentOverlap;
+    // Boost score if a significant portion of the answer words are in the label, or vice-versa
+    if (answerWords.length > 0 && currentOverlap / answerWords.length > 0.6) { // More than 60% of AI's words are in label
+      score += 10;
+    }
+    if (labelWords.length > 0 && currentOverlap / labelWords.length > 0.6) { // More than 60% of label's words are in AI
+      score += 10;
+    }
+
+
+    if (score > maxOverlapScore) {
+      maxOverlapScore = score;
+      bestMatch = option;
     }
   }
 
+  // Return bestMatch only if a minimum level of confidence (overlap) is met
+  // A simple threshold might be that at least one significant word overlaps, or a higher overlap score
+  if (maxOverlapScore > 0) { // Can be adjusted, e.g., maxOverlapScore >= 5 or based on word count
+      return bestMatch;
+  }
+  
   return null;
 }
 
@@ -1220,3 +1417,194 @@ function getFieldMetadata(field) {
 
   return metadata;
 }
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // This listener now handles multiple actions
+  if (request.action === 'showToast' && request.toast) {
+    showToast(request.toast.icon, request.toast.title);
+    sendResponse({status: 'ok'}); // Acknowledge receipt
+  } else if (request.action === 'startSelection') {
+    // This now just triggers the mode, doesn't wait for a response here.
+    enterElementSelectionMode(request.options);
+    sendResponse({status: 'selection_started'}); // Acknowledge receipt
+  }
+  return true;
+});
+
+function enterElementSelectionMode(options) {
+  // The Promise wrapper is removed. This function now fires and forgets.
+  
+  const isMulti = options.multi === true;
+  const type = typeof options === 'string' ? options : options.type;
+  
+  // --- Overlay and Instructions ---
+  const overlay = document.createElement('div');
+  overlay.id = 'fake-filler-selection-overlay';
+  // (Styles are mostly the same, so omitting for brevity in thought process)
+  overlay.style.position = 'fixed';
+  overlay.style.top = '0';
+  overlay.style.left = '0';
+  overlay.style.width = '100vw';
+  overlay.style.height = '100vh';
+  overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+  overlay.style.zIndex = '2147483647';
+  overlay.style.display = 'flex';
+  overlay.style.justifyContent = 'center';
+  overlay.style.alignItems = 'flex-start';
+  overlay.style.paddingTop = '20px';
+  overlay.style.color = 'white';
+  overlay.style.fontSize = '18px';
+  overlay.style.fontFamily = 'sans-serif';
+  overlay.style.pointerEvents = 'none';
+
+  const instructions = isMulti
+    ? `Click on each <strong>${type}</strong> element. Press 'Enter' when finished.`
+    : `Click to select the <strong>${type}</strong> element.`;
+
+  overlay.innerHTML = `
+    <div style="background: black; padding: 15px 25px; border-radius: 10px; pointer-events: auto; border: 1px solid #333;">
+      ${instructions} Press 'Esc' to cancel.
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // --- State Variables ---
+  let lastHighlightedElement = null;
+  const selectedElements = [];
+
+  // --- Event Handlers ---
+  const mouseoverHandler = (e) => {
+    const target = e.target;
+    if (overlay.contains(target) || selectedElements.includes(target)) {
+      return;
+    }
+    target.style.outline = '2px solid #25D366';
+    lastHighlightedElement = target;
+  };
+
+  const mouseoutHandler = (e) => {
+    if (lastHighlightedElement) {
+      lastHighlightedElement.style.outline = '';
+    }
+  };
+
+  const cleanup = () => {
+    document.removeEventListener('mouseover', mouseoverHandler);
+    document.removeEventListener('mouseout', mouseoutHandler);
+    document.removeEventListener('click', clickHandler, true);
+    document.removeEventListener('keydown', keydownHandler, true);
+    
+    // Clear all highlights
+    if (lastHighlightedElement) lastHighlightedElement.style.outline = '';
+    selectedElements.forEach(el => el.style.outline = '');
+
+    if (document.body.contains(overlay)) {
+      document.body.removeChild(overlay);
+    }
+  };
+
+  const clickHandler = (e) => {
+    if (overlay.contains(e.target)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const clickedEl = e.target;
+    
+    if (isMulti) {
+      // Toggle selection for multi-mode
+      const index = selectedElements.indexOf(clickedEl);
+      if (index > -1) {
+        selectedElements.splice(index, 1);
+        clickedEl.style.outline = ''; // Remove highlight
+      } else {
+        selectedElements.push(clickedEl);
+        clickedEl.style.outline = '3px solid #007bff'; // Persistent blue highlight
+      }
+      lastHighlightedElement = null; // Prevent mouseout from clearing the blue highlight
+    } else {
+      // Single selection mode
+      const selector = generateSelector(clickedEl);
+      if (lastHighlightedElement) lastHighlightedElement.style.outline = '';
+      clickedEl.style.outline = '3px solid #28a745'; // Success green
+
+      setTimeout(() => {
+        cleanup();
+        // Send the result back to the background script
+        chrome.runtime.sendMessage({ action: 'elementSelected', selector: selector });
+      }, 300);
+    }
+  };
+  
+  const keydownHandler = (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      cleanup();
+      // Optionally, notify the background script of cancellation
+      chrome.runtime.sendMessage({ action: 'selectionCancelled' });
+    }
+    if (isMulti && e.key === 'Enter') {
+      if (selectedElements.length > 0) {
+        const selectors = selectedElements.map(generateSelector);
+        cleanup();
+        // Send the result back to the background script
+        chrome.runtime.sendMessage({ action: 'elementSelected', selectors: selectors });
+      } else {
+        cleanup();
+        // Optionally, notify of no selection
+        chrome.runtime.sendMessage({ action: 'selectionCancelled', reason: 'No elements selected.' });
+      }
+    }
+  };
+
+  document.addEventListener('mouseover', mouseoverHandler);
+  document.addEventListener('mouseout', mouseoutHandler);
+  document.addEventListener('click', clickHandler, true);
+  document.addEventListener('keydown', keydownHandler, true);
+}
+
+function escapeCssSelector(str) {
+  // Escape common CSS selector special characters, especially ':' for Tailwind CSS
+  return str.replace(/([.:])/g, '\\$1');
+}
+
+function generateSelector(el) {
+    if (!el) return null;
+
+    // If the element has a unique ID, use it
+    if (el.id) {
+        const selector = `#${escapeCssSelector(el.id)}`;
+        if (document.querySelectorAll(selector).length === 1) {
+            return selector;
+        }
+    }
+
+    // Otherwise, build a path of tag names and classes
+    const parts = [];
+    let currentEl = el;
+    while (currentEl && currentEl.tagName !== 'BODY') {
+        let part = currentEl.tagName.toLowerCase();
+        
+        const classes = Array.from(currentEl.classList);
+        if (classes.length > 0) {
+            part += '.' + classes.map(cls => escapeCssSelector(cls)).join('.');
+        }
+
+        // Add nth-of-type to distinguish between siblings
+        let sibling = currentEl;
+        let nth = 1;
+        while (sibling = sibling.previousElementSibling) {
+            if (sibling.tagName === currentEl.tagName) {
+                nth++;
+            }
+        }
+        part += `:nth-of-type(${nth})`;
+
+
+        parts.unshift(part);
+        currentEl = currentEl.parentElement;
+    }
+
+    return parts.join(' > ');
+}
+

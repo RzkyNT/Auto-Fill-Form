@@ -263,24 +263,89 @@ async function callOpenAi(request, sendResponse, config) {
   }
 }
 
+let profileCreationState = {};
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action !== "callAiApi") return;
-
-  console.log("--- Background: Received request to call AI API ---");
-  chrome.storage.local.get(
-    {
-      aiProvider: "gemini",
-      openAiConfig: {},
-      apiKeys: [],
-    },
-    (storage) => {
-      if (storage.aiProvider === "openai") {
-        callOpenAi(request, sendResponse, storage.openAiConfig);
-      } else {
-        callGemini(request, sendResponse);
+  if (request.action === "callAiApi") {
+    console.log("--- Background: Received request to call AI API ---");
+    chrome.storage.local.get(
+      {
+        aiProvider: "gemini",
+        openAiConfig: {},
+        apiKeys: [],
+      },
+      (storage) => {
+        if (storage.aiProvider === "openai") {
+          callOpenAi(request, sendResponse, storage.openAiConfig);
+        } else {
+          callGemini(request, sendResponse);
+        }
       }
-    }
-  );
+    );
+    return true; // Keep the message channel open for async response
+  }
 
-  return true;
+  // --- Profile Creation Workflow ---
+  if (request.action === 'startProfileCreation') {
+    console.log('Background: Starting profile creation.', request);
+    profileCreationState = {
+      tabId: request.tabId,
+      hostname: request.hostname,
+      step: 'question',
+    };
+    // Trigger the first step
+    chrome.tabs.sendMessage(request.tabId, {
+      action: 'startSelection',
+      options: { type: 'question', multi: false }
+    });
+    return true; // Keep channel open for potential response, though not used here
+  }
+
+  if (request.action === 'elementSelected') {
+    console.log('Background: Received selected element.', request);
+    const { tabId, step } = profileCreationState;
+
+    if (sender.tab.id !== tabId) {
+      console.error("Background: Received elementSelected from wrong tab.");
+      return;
+    }
+
+    if (step === 'question' && request.selector) {
+      profileCreationState.questionSelector = request.selector;
+      profileCreationState.step = 'answers';
+      
+      // Trigger the next step: select answers
+      chrome.tabs.sendMessage(tabId, {
+        action: 'startSelection',
+        options: { type: 'answer', multi: true }
+      });
+
+    } else if (step === 'answers' && request.selectors) {
+      const { hostname, questionSelector } = profileCreationState;
+      const answerSelectors = request.selectors;
+
+      const newProfile = {
+        question: questionSelector,
+        answers: answerSelectors,
+      };
+
+      // Save the complete profile
+      chrome.storage.local.get({ customProfiles: {} }, (result) => {
+        const profiles = result.customProfiles;
+        profiles[hostname] = newProfile;
+        chrome.storage.local.set({ customProfiles: profiles }, () => {
+          console.log('Background: Profile saved for', hostname);
+          // Send a success notification to the content script
+          chrome.tabs.sendMessage(tabId, {
+            action: 'showToast',
+            toast: { icon: 'success', title: `Profile saved for ${hostname}` }
+          });
+        });
+      });
+
+      // Reset state
+      profileCreationState = {};
+    }
+    return true;
+  }
 });
