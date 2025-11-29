@@ -3,8 +3,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const clearHistoryButton = document.getElementById("clear-history");
   const searchInput = document.getElementById("search-history");
   const historyContainer = document.getElementById("history-container");
+  const htmlRoot = document.documentElement;
 
   let allHistoryEntries = [];
+
+  // --- Theme Application ---
+  function applyTheme(isDark) {
+    htmlRoot.classList.toggle("light", !isDark);
+  }
 
   // --- Event Listeners ---
 
@@ -85,14 +91,53 @@ document.addEventListener("DOMContentLoaded", () => {
       const tbody = document.createElement('tbody');
       entries.sort((a, b) => b.timestamp - a.timestamp).forEach(entry => {
         const row = document.createElement('tr');
-        ['question', 'answer', 'status'].forEach(key => {
-          const cell = document.createElement('td');
-          cell.textContent = entry[key] || "N/A";
-          row.appendChild(cell);
-        });
-        const timeCell = document.createElement('td');
-        timeCell.textContent = new Date(entry.timestamp).toLocaleString();
-        row.appendChild(timeCell);
+        
+        // Question Cell (with choices)
+        const qCell = document.createElement('td');
+        const qText = document.createTextNode(entry.question || "N/A");
+        qCell.appendChild(qText);
+
+        if (entry.choices && entry.choices.length > 0) {
+            const choicesContainer = document.createElement('div');
+            choicesContainer.style.marginTop = '10px';
+            choicesContainer.style.opacity = '0.8';
+
+            const choicesTitle = document.createElement('small');
+            const titleItalic = document.createElement('i');
+            titleItalic.textContent = 'Pilihan:';
+            choicesTitle.appendChild(titleItalic);
+            choicesContainer.appendChild(choicesTitle);
+
+            const choicesList = document.createElement('ol');
+            choicesList.style.margin = '5px 0 0 18px';
+            choicesList.style.padding = '0';
+
+            entry.choices.forEach(choiceText => {
+                const choiceItem = document.createElement('li');
+                choiceItem.textContent = choiceText;
+                choicesList.appendChild(choiceItem);
+            });
+            
+            choicesContainer.appendChild(choicesList);
+            qCell.appendChild(choicesContainer);
+        }
+        row.appendChild(qCell);
+
+        // Answer Cell
+        const aCell = document.createElement('td');
+        aCell.textContent = entry.answer || "N/A";
+        row.appendChild(aCell);
+
+        // Status Cell
+        const sCell = document.createElement('td');
+        sCell.textContent = entry.status;
+        row.appendChild(sCell);
+
+        // Timestamp Cell
+        const tCell = document.createElement('td');
+        tCell.textContent = new Date(entry.timestamp).toLocaleString();
+        row.appendChild(tCell);
+
         tbody.appendChild(row);
       });
 
@@ -104,7 +149,12 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- Initial Load ---
-  chrome.storage.local.get("smartFillHistory", (result) => {
+  chrome.storage.local.get(["smartFillHistory", "themeMode"], (result) => {
+    // Apply theme first
+    const themeMode = result.themeMode || "light";
+    applyTheme(themeMode === "dark");
+    
+    // Then render history
     allHistoryEntries = result.smartFillHistory || [];
     renderHistory(allHistoryEntries);
   });

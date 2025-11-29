@@ -400,6 +400,7 @@ function startHistoryEntry(questionText, platform) {
     formUrl: window.location.href,
     question: questionText,
     answer: "",
+    choices: [],
     status: "pending",
     timestamp: Date.now(),
     platform: platform || "unknown",
@@ -422,6 +423,7 @@ function saveSmartFillHistory(entry) {
     formUrl: entry.formUrl || window.location.href,
     question: entry.question || "",
     answer: entry.answer || "",
+    choices: entry.choices || [],
     status: entry.status || "answered",
     timestamp: entry.timestamp || Date.now(),
     events: entry.events || [],
@@ -942,6 +944,10 @@ async function processCurrentQuizState(profile) {
         console.warn("processCurrentQuizState: Could not find any answer elements using the saved selectors. Waiting for next mutation.");
         return;
     }
+
+    if (smartFillSession?.currentEntry) {
+      smartFillSession.currentEntry.choices = options.map(opt => opt.label);
+    }
     
     const prompt = `Question: "${questionText}"\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
     console.log("Sending Prompt to Background:", prompt);
@@ -1125,6 +1131,11 @@ async function fillGoogleFormQuestion(q, questionText, questionHash) {
     const choices = q.querySelectorAll('div[role="radio"], div[role="checkbox"]');
     if (choices.length > 0) {
       const choiceLabels = Array.from(choices).map(c => (c.getAttribute('aria-label') || c.textContent || "").trim()).filter(Boolean);
+      
+      if (smartFillSession?.currentEntry) {
+        smartFillSession.currentEntry.choices = choiceLabels;
+      }
+
       smartFillSession.currentEntry.events = [];
       if (choiceLabels.length === 0) {
         console.warn("Found choices but could not extract any labels. Skipping.");
@@ -1206,6 +1217,11 @@ async function handleQuizPlatforms(host) {
   if (!options.length) {
     throw new Error("Tidak dapat menemukan opsi jawaban.");
   }
+
+  if (smartFillSession?.currentEntry) {
+    smartFillSession.currentEntry.choices = options.map(opt => opt.label);
+  }
+
   const prompt = `Question: "${questionText}"\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
   console.log("Sending Prompt to Background:", prompt);
   updateProgressOverlay("Consulting AI provider...", questionText);

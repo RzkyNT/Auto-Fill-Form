@@ -293,11 +293,67 @@
     }
 
     .switch {
-      display: inline-flex;
+      position: relative;
+      width: 44px;
+      height: 44px;
+      display: flex;
       align-items: center;
-      gap: 10px;
-      font-weight: 600;
+      justify-content: center;
+      border-radius: 50%;
+      transition: background-color 0.3s ease;
+      background-color: var(--color-surface-alt);
+      cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    .switch:hover {
+      background-color: var(--color-accent);
+    }
+    .switch:hover .theme-icon svg {
+      color: #04070D;
+    }
+
+    .switch input[type="checkbox"] {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .switch .theme-icon {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .switch .theme-icon svg {
+      position: absolute;
+      transition: opacity 0.3s ease, transform 0.3s ease;
       color: var(--color-text);
+    }
+
+    .switch .theme-icon #theme-icon-light {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .switch .theme-icon #theme-icon-dark {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+
+    .switch input[type="checkbox"]:checked ~ .theme-icon #theme-icon-light {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    .switch input[type="checkbox"]:checked ~ .theme-icon #theme-icon-dark {
+      opacity: 1;
+      transform: scale(1);
     }
 
     .developer-tag {
@@ -380,17 +436,8 @@
         <h3>Smart Filler</h3>
         <p class="subhead">Auto-fill forms with Gemini or OpenAI intelligence.</p>
       </div>
-      <span class="developer-tag">By RzkyNT</span>
-    </div>
-
-    <button id="fill">Fill with Random Data</button>
-    <button id="smart-fill">Smart Fill with AI</button>
-
-    <div class="settings-group">
-      <h4>Settings</h4>
-      <label class="switch">
+      <label class="switch" id="theme-toggle-label">
       <input type="checkbox" id="dark-mode-toggle" />
-      <span class="slider"></span>
       <div class="theme-icon">
         <svg id="theme-icon-light" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
@@ -408,12 +455,18 @@
         </svg>
       </div>
     </label>
+    </div>
 
-      <label class="switch">
+    <button id="fill">Fill with Random Data</button>
+    <button id="smart-fill">Smart Fill with AI</button>
+
+    <div class="settings-group">
+      <h4>Settings</h4>
+      <label class="switchs">
         <input type="checkbox" id="overlay-toggle" checked />
         <span>Show smart-fill overlay</span>
       </label>
-      <label class="switch">
+      <label class="switchs">
         <input type="checkbox" id="auto-run" />
         Auto-run on page load
       </label>
@@ -468,7 +521,11 @@
       <p class="history-subhead">View, search, and manage your smart fill history on a dedicated page.</p>
       <button id="view-history">View History</button>
     </div>
+    <div>
+      <span class="developer-tag">By RzkyNT</span>
+    </div>
   </div> <!-- End of main-view -->
+  
 
   <div id="profiles-view" class="view">
     <button id="back-to-settings" class="back-button">Back to Settings</button>
