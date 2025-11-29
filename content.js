@@ -35,7 +35,7 @@ function injectSweetAlert2() {
 
   const jsScript = document.createElement('script');
   jsScript.id = 'sweetalert2-script';
-  jsScript.src = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2.all.min.js');
+  jsScript.src = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2@11.js');
   jsScript.async = true;
   document.head.appendChild(jsScript);
 }
@@ -44,7 +44,7 @@ function showToast(icon, title, timer = 3000) {
   // Ensure Swal is available before trying to use it
   if (typeof Swal === 'undefined') {
     console.warn('SweetAlert2 not loaded, falling back to alert:', title);
-    alert(title);
+    console.error('SweetAlert2 not loaded. Message:', title);
     return;
   }
 
