@@ -27,12 +27,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Handle Clear History button click
   clearHistoryButton.addEventListener("click", () => {
-    if (confirm("Are you sure you want to delete all history? This cannot be undone.")) {
-      chrome.storage.local.set({ smartFillHistory: [] }, () => {
-        allHistoryEntries = [];
-        renderHistory(allHistoryEntries, searchInput.value); // Re-render with current search term (which will show empty)
-      });
-    }
+    const isLightTheme = htmlRoot.classList.contains('light');
+
+    Swal.fire({
+      title: 'Are you sure?',
+      text: "You won't be able to revert this!",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, delete it!',
+      background: isLightTheme ? '#ffffff' : '#0B0F14',
+      color: isLightTheme ? '#2b2b2b' : '#F2F4F6',
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        chrome.storage.local.set({ smartFillHistory: [] }, () => {
+          allHistoryEntries = [];
+          renderHistory(allHistoryEntries, searchInput.value);
+          Swal.fire({
+            title: 'Deleted!',
+            text: 'Your history has been deleted.',
+            icon: 'success',
+            background: isLightTheme ? '#ffffff' : '#0B0F14',
+            color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
+          });
+        });
+      }
+    });
   });
 
   // --- Functions ---
