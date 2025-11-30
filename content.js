@@ -54,7 +54,7 @@ async function showToast(icon, title, timer = 3000) {
   await injectSweetAlert2(); // <--- pastikan loaded dulu
 
   if (!window.Swal) {
-    alert(title);
+    showContentToast(title, icon);
     return;
   }
 
@@ -933,7 +933,7 @@ async function doSmartFill() {
         console.error("Error during Custom Profile Smart Fill:", error);
         updateProgressOverlay("Error", error.message);
         finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
-        showToast('error', `An error occurred: ${error.message}`, 5000);
+        showContentToast(`An error occurred: ${error.message}`, 'error');
     } finally {
         console.log("--- Smart Fill Finally Block ---");
         // Cleanup is now handled directly by handleCustomProfile when its stopPromise resolves.
@@ -960,7 +960,7 @@ async function doSmartFill() {
     const isCbt = hostname === '115.124.76.241';
 
     if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) {
-      showToast('error', "Smart Fill currently supports Google Forms, wayground.com, quizziz.com, kahoot.it, and the CBT instance.", 6000);
+      showContentToast("Smart Fill currently supports Google Forms, wayground.com, quizziz.com, kahoot.it, and the CBT instance.", 'error');
       console.warn("Smart Fill aborted: Unsupported host.");
       removeProgressOverlay();
       updateAiButtonState(false); // Reset button state
@@ -978,7 +978,7 @@ async function doSmartFill() {
       console.error("Error during Smart Fill:", error);
       updateProgressOverlay("Error", error.message);
       finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
-      showToast('error', `An error occurred while using the AI provider: ${error.message}`, 5000);
+      showContentToast(`An error occurred while using the AI provider: ${error.message}`, 'error');
     } finally {
       console.log("--- Smart Fill Completed ---");
       if (smartFillSession) {
@@ -1078,7 +1078,7 @@ async function processCurrentQuizState(profile) {
     console.error("Error during processing quiz state:", error);
     updateProgressOverlay("Error", error.message);
     finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
-    showToast('error', `An error occurred: ${error.message}`, 5000);
+    showContentToast('error', `An error occurred: ${error.message}`, 5000);
     // On error, the process should stop
     if (smartFillSession) {
       smartFillSession.stopRequested = true;
@@ -1156,50 +1156,144 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
     console.log(`--- Processing Question ${index}/${total}: "${questionText}"`);
     updateProgressOverlay(`Reading question ${index}/${total}`, questionText);
 
-    const options = [];
-    for (const answerRelativeSelector of profile.answers) {
-      const optionElement = questionBlockElement.querySelector(answerRelativeSelector);
-      if (optionElement) {
-        options.push({ element: optionElement, label: (optionElement.textContent || '').trim() });
-      }
+    const detectedAnswerField = getAnswerFieldAndTypeInBlock(questionBlockElement);
+
+    if (!detectedAnswerField) {
+        console.warn(`No identifiable answer field found in question block ${index}. Skipping.`);
+        finalizeHistoryEntry("no identifiable answer field", smartFillSession?.currentEntry?.answer || "");
+        await addAnsweredQuestionHash(questionHash);
+        smartFillSession.completedSteps = index;
+        updateProgressBar(index / Math.max(1, total));
+        return;
     }
 
-    if (options.length === 0) {
-      console.warn(`No answer options found for question ${index}. Skipping.`);
-      finalizeHistoryEntry("no options", smartFillSession?.currentEntry?.answer || "");
-      return;
-    }
+    let aiAnswer = null;
 
-    if (smartFillSession?.currentEntry) {
-      smartFillSession.currentEntry.choices = options.map(opt => opt.label);
+    if (detectedAnswerField.type === 'text_input') {
+        const inputElement = detectedAnswerField.element;
+        const prompt = `Provide a concise and appropriate answer for the following question: "${questionText}"`;
+        updateProgressOverlay("Consulting AI provider...", questionText);
+        aiAnswer = await getAiResponse(prompt);
+        inputElement.value = aiAnswer;
+        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+        finalizeHistoryEntry("answered (text input)", aiAnswer);
+    } else if (detectedAnswerField.type === 'multiple_choice' || detectedAnswerField.type === 'checkbox_group') {
+        const options = [];
+        for (const el of detectedAnswerField.elements) {
+            options.push({ element: el, label: (function() {
+                let labelText = '';
+                // 1. Try to find the text of the associated option via 'for' attribute
+                if (el.id) {
+                    const associatedLabel = questionBlockElement.querySelector(`label[for="${el.id}"]`);
+                    if (associatedLabel) {
+                        labelText = associatedLabel.textContent.trim();
+                    }
+                }
+                
+                // 2. If not found, try parent's text content (common for structures like <div><input>Text</div>)
+                if (!labelText && el.parentElement) {
+                    labelText = el.parentElement.textContent.trim();
+                }
+
+                // 3. If still not found, try next or previous sibling's text content
+                if (!labelText && el.nextElementSibling) {
+                    labelText = el.nextElementSibling.textContent.trim();
+                }
+                if (!labelText && el.previousElementSibling) {
+                    labelText = el.previousElementSibling.textContent.trim();
+                }
+                
+                // 4. Fallback to el.value if it's not a generic "on", "1", or "true" and it provides meaningful text
+                if (!labelText && el.value && el.value.toLowerCase() !== 'on' && el.value.toLowerCase() !== '1' && el.value.toLowerCase() !== 'true') {
+                    labelText = el.value;
+                }
+                
+                // 5. Final fallback to ID for debugging if nothing else works
+                if (!labelText) {
+                    labelText = el.id;
+                }
+                return labelText;
+            })() });
+        }
+
+        if (options.length === 0) {
+            console.warn(`No answer options found for question ${index}. Skipping.`);
+            finalizeHistoryEntry("no options", smartFillSession?.currentEntry?.answer || "");
+            await addAnsweredQuestionHash(questionHash);
+            return;
+        }
+
+        if (smartFillSession?.currentEntry) {
+          smartFillSession.currentEntry.choices = options.map(opt => opt.label);
+        }
+
+        const prompt = `Question: "${questionText}"\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
+        updateProgressOverlay("Consulting AI provider...", questionText);
+        aiAnswer = await getAiResponse(prompt);
+        console.log("AI Answer received:", aiAnswer);
+        console.log("Comparing against options:", options.map(o => o.label));
+        updateProgressOverlay("Matching AI response...", aiAnswer);
+
+        const target = matchOption(options, aiAnswer);
+        if (target) {
+            target.element.click();
+            finalizeHistoryEntry("answered (choice)", target.label);
+        } else {
+            finalizeHistoryEntry("no match", aiAnswer);
+        }
+    } else if (detectedAnswerField.type === 'single_checkbox') {
+        const checkboxElement = detectedAnswerField.element;
+        const prompt = `Based on the question "${questionText}", should the checkbox be checked? Respond with only "YES" or "NO".`;
+        updateProgressOverlay("Consulting AI provider...", questionText);
+        aiAnswer = await getAiResponse(prompt);
+        if (aiAnswer.toLowerCase() === 'yes') {
+            checkboxElement.checked = true;
+            finalizeHistoryEntry("checked", "YES");
+        } else {
+            checkboxElement.checked = false;
+            finalizeHistoryEntry("unchecked", "NO");
+        }
+        checkboxElement.dispatchEvent(new Event('change', { bubbles: true }));
+    } else if (detectedAnswerField.type === 'dropdown') {
+        const selectElement = detectedAnswerField.element;
+        const options = Array.from(selectElement.options).map(opt => ({ element: opt, label: opt.textContent }));
+        if (options.length === 0) {
+            console.warn(`No options found for dropdown in question ${index}. Skipping.`);
+            finalizeHistoryEntry("no dropdown options", smartFillSession?.currentEntry?.answer || "");
+            await addAnsweredQuestionHash(questionHash);
+            return;
+        }
+
+        if (smartFillSession?.currentEntry) {
+            smartFillSession.currentEntry.choices = options.map(opt => opt.label);
+        }
+
+        const prompt = `Question: "${questionText}"\nDropdown Options: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct option? Respond with only the exact text of the best option. Do not add any explanation.`;
+        updateProgressOverlay("Consulting AI provider...", questionText);
+        aiAnswer = await getAiResponse(prompt);
+        console.log("AI Answer received:", aiAnswer);
+        updateProgressOverlay("Matching AI response...", aiAnswer);
+
+        const target = options.find(opt => normalizeQuizText(opt.label) === normalizeQuizText(aiAnswer));
+        if (target) {
+            selectElement.value = target.element.value;
+            selectElement.dispatchEvent(new Event('change', { bubbles: true }));
+            finalizeHistoryEntry("answered (dropdown)", target.label);
+        } else {
+            finalizeHistoryEntry("no match (dropdown)", aiAnswer);
+        }
+    } else {
+        console.warn(`Unknown detected answer field type: ${detectedAnswerField.type} for question ${index}. Skipping.`);
+        finalizeHistoryEntry("unknown type", smartFillSession?.currentEntry?.answer || "");
     }
     
-    const prompt = `Question: "${questionText}"\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
-    console.log("Sending Prompt to Background:", prompt);
-    updateProgressOverlay("Consulting AI provider...", questionText);
-
-    const aiAnswer = await getAiResponse(prompt);
-    console.log("AI Answer received:", aiAnswer);
-    console.log("Comparing against options:", options.map(o => o.label));
-    updateProgressOverlay("Matching AI response...", aiAnswer);
-
-    const target = matchOption(options, aiAnswer);
-
-    if (target) {
-        target.element.click();
-        finalizeHistoryEntry("answered (custom)", target.label);
-        await addAnsweredQuestionHash(questionHash);
-    } else {
-        finalizeHistoryEntry("no match (custom)", aiAnswer);
-    }
+    await addAnsweredQuestionHash(questionHash);
     smartFillSession.completedSteps = index;
     updateProgressBar(index / Math.max(1, total));
 
   } catch (error) {
-    console.error(`Error processing custom profile question ${index}:`, error);
-    updateProgressOverlay("Error", error.message);
     finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
-    showToast('error', `An error occurred: ${error.message}`, 5000);
+    showContentToast(`An error occurred: ${error.message}`, 'error');
     if (smartFillSession) smartFillSession.stopRequested = true;
   }
 }
@@ -1338,7 +1432,7 @@ async function handleQuizPlatforms(host) {
   const answeredHashes = await getAnsweredQuestionHashes();
   if (answeredHashes.includes(questionHash)) {
       console.log("Question already answered. Skipping.");
-      showToast('info', 'Pertanyaan ini sudah dijawab sebelumnya.', 3000);
+      showContentToast('Pertanyaan ini sudah dijawab sebelumnya.', 'info');
       // We need to stop the process gracefully
       if (smartFillSession) {
           removeProgressOverlay();
@@ -1704,8 +1798,8 @@ function getFieldMetadata(field) {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // This listener now handles multiple actions
-  if (request.action === 'showToast' && request.toast) {
-    showToast(request.toast.icon, request.toast.title);
+  if (request.action === 'showContentToast' && request.toast) {
+    showContentToast(request.toast.title, request.toast.icon);
     sendResponse({status: 'ok'}); // Acknowledge receipt
   } else if (request.action === 'startSelection') {
     // This now just triggers the mode, doesn't wait for a response here.
@@ -1748,8 +1842,8 @@ function enterElementSelectionMode(options) {
     instructions = `Click to select the **ENTIRE container** of ONE question, including its text AND all its answer options.`;
   } else if (type === 'questionText') {
     instructions = `Click to select the <strong>question TEXT</strong> within the selected question block.`;
-  } else if (type === 'answer') {
-    instructions = `Click on each <strong>answer option</strong> within the selected question block. Press 'Enter' when finished.`;
+  } else if (type === 'answerField') {
+    instructions = `Click to select the **answer input field(s)** (e.g., text input, checkboxes, dropdown). If multiple options (radio/checkbox group), click all & press Enter.`;
   } else {
     // Fallback for other types or default
     instructions = isMulti
@@ -1830,10 +1924,14 @@ function enterElementSelectionMode(options) {
         if (!rootElement) {
             console.error("DEBUG: Relative selection ERROR: rootElement is null for selector:", rootSelector);
         }
+        const relativeSelector = generateRelativeSelector(clickedEl, rootElement);
+        const answerFieldType = getAnswerFieldType([clickedEl]);
         selectorToSend = {
-          relativeSelector: generateRelativeSelector(clickedEl, rootElement),
+          relativeSelector: relativeSelector,
+          answerFieldType: answerFieldType,
         };
         console.log("DEBUG: Relative selection - generated relativeSelector:", selectorToSend.relativeSelector);
+        console.log("DEBUG: Relative selection - inferred answerFieldType:", answerFieldType);
       } else {
         selectorToSend = { selector: generateSelector(clickedEl) };
       }
@@ -1861,7 +1959,13 @@ function enterElementSelectionMode(options) {
         if (options.relativeTo) {
           const rootElement = document.querySelector(options.relativeTo);
           const relativeSelectors = selectedElements.map(el => generateRelativeSelector(el, rootElement));
-          selectorsToSend = { relativeSelectors: relativeSelectors };
+          const answerFieldType = getAnswerFieldType(selectedElements);
+          selectorsToSend = { 
+            relativeSelectors: relativeSelectors,
+            answerFieldType: answerFieldType,
+          };
+          console.log("DEBUG: Relative selection - generated relativeSelectors:", selectorsToSend.relativeSelectors);
+          console.log("DEBUG: Relative selection - inferred answerFieldType:", answerFieldType);
         } else {
           selectorsToSend = { selectors: selectedElements.map(generateSelector) };
         }
@@ -1878,6 +1982,112 @@ function enterElementSelectionMode(options) {
   document.addEventListener('mouseout', mouseoutHandler);
   document.addEventListener('click', clickHandler, true);
   document.addEventListener('keydown', keydownHandler, true);
+}
+
+// Helper to dynamically detect answer field type and elements within a given question block
+function getAnswerFieldAndTypeInBlock(questionBlockElement) {
+    if (!questionBlockElement) return null;
+
+    // --- 1. Check for single text input/textarea ---
+    const textInput = questionBlockElement.querySelector('input:not([type="radio"]):not([type="checkbox"]):not([type="hidden"]), textarea');
+    if (textInput) {
+        const relativeSelector = generateRelativeSelector(textInput, questionBlockElement);
+        if (relativeSelector) {
+            return { type: 'text_input', selector: relativeSelector, element: textInput };
+        }
+    }
+
+    // --- 2. Check for dropdown (select element) ---
+    const dropdown = questionBlockElement.querySelector('select');
+    if (dropdown) {
+        const relativeSelector = generateRelativeSelector(dropdown, questionBlockElement);
+        if (relativeSelector) {
+            return { type: 'dropdown', selector: relativeSelector, element: dropdown };
+        }
+    }
+
+    // --- 3. Check for multiple choice (radio buttons) ---
+    const radioInputs = questionBlockElement.querySelectorAll('input[type="radio"]');
+    if (radioInputs.length > 0) {
+        const selectors = Array.from(radioInputs).map(el => generateRelativeSelector(el, questionBlockElement)).filter(Boolean);
+        if (selectors.length > 0) {
+            return { type: 'multiple_choice', selectors: selectors, elements: Array.from(radioInputs) };
+        }
+    }
+    
+    // Check for div/span/label based multiple choice
+    const genericChoices = questionBlockElement.querySelectorAll('div[role="radio"], span[role="radio"], label[role="radio"], div[role="option"], span[role="option"], label[role="option"], div[role="button"], span[role="button"], label[role="button"], .choice-item, .option-item');
+    if (genericChoices.length > 0) {
+        const selectors = Array.from(genericChoices).map(el => generateRelativeSelector(el, questionBlockElement)).filter(Boolean);
+        if (selectors.length > 0) {
+            return { type: 'multiple_choice', selectors: selectors, elements: Array.from(genericChoices) };
+        }
+    }
+
+    // --- 4. Check for checkbox group ---
+    const checkboxes = questionBlockElement.querySelectorAll('input[type="checkbox"]');
+    if (checkboxes.length > 1) { 
+        const selectors = Array.from(checkboxes).map(el => generateRelativeSelector(el, questionBlockElement)).filter(Boolean);
+        if (selectors.length > 0) {
+            return { type: 'checkbox_group', selectors: selectors, elements: Array.from(checkboxes) };
+        }
+    }
+
+    // --- 5. Check for single checkbox ---
+    if (checkboxes.length === 1) { 
+        const relativeSelector = generateRelativeSelector(checkboxes[0], questionBlockElement);
+        if (relativeSelector) {
+            return { type: 'single_checkbox', selector: relativeSelector, element: checkboxes[0] };
+        }
+    }
+    
+    console.warn("getAnswerFieldAndTypeInBlock: No identifiable answer field found in block.", questionBlockElement);
+    return null;
+}
+
+function getAnswerFieldType(elements) {
+    if (!elements || elements.length === 0) return 'unknown';
+
+    if (elements.length === 1) {
+        const el = elements[0];
+        const tagName = el.tagName.toLowerCase();
+        const inputType = el.type ? el.type.toLowerCase() : '';
+
+        if (tagName === 'input' && ['text', 'email', 'password', 'number', 'tel', 'url'].includes(inputType)) {
+            return 'text_input';
+        }
+        if (tagName === 'textarea') {
+            return 'text_input';
+        }
+        if (tagName === 'select') {
+            return 'dropdown';
+        }
+        if (tagName === 'input' && inputType === 'checkbox') {
+            return 'single_checkbox';
+        }
+        if (['div', 'span', 'label'].includes(tagName) && el.hasAttribute('role') && el.getAttribute('role').includes('radio')) {
+            return 'multiple_choice';
+        }
+    }
+
+    if (elements.length > 1) {
+        const firstEl = elements[0];
+        const tagName = firstEl.tagName.toLowerCase();
+        const inputType = firstEl.type ? firstEl.type.toLowerCase() : '';
+
+        if (tagName === 'input' && inputType === 'radio') {
+            return 'multiple_choice';
+        }
+        if (tagName === 'input' && inputType === 'checkbox') {
+            return 'checkbox_group';
+        }
+        if (['div', 'span', 'label'].includes(tagName) && inputType === '') {
+            // More generic check for clickable choices. If multiple non-input divs/spans/labels are selected, assume multiple_choice.
+            return 'multiple_choice';
+        }
+    }
+
+    return 'unknown';
 }
 
 function escapeCssSelector(str) {

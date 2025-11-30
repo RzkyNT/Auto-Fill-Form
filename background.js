@@ -360,27 +360,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: { type: 'questionText', multi: false, relativeTo: profileCreationState.exampleQuestionBlockSelector } });
     } else if (step === 'questionText' && request.relativeSelector) {
       profileCreationState.questionTextRelativeSelector = request.relativeSelector;
-      profileCreationState.step = 'answers';
-      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: { type: 'answer', multi: true, relativeTo: profileCreationState.exampleQuestionBlockSelector } });
-    } else if (step === 'answers' && request.relativeSelectors) {
+      profileCreationState.step = 'answerField';
+      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: { type: 'answerField', multi: true, relativeTo: profileCreationState.exampleQuestionBlockSelector } });
+    } else if (step === 'answerField' && (request.relativeSelector || request.relativeSelectors) && request.answerFieldType) {
       const {
         hostname,
         questionListContainerSelector,
         exampleQuestionBlockSelector,
         questionTextRelativeSelector,
       } = profileCreationState;
+
+      let answerFieldData;
+      if (request.relativeSelectors) {
+          answerFieldData = {
+              type: request.answerFieldType,
+              selectors: request.relativeSelectors
+          };
+      } else { // Single selection
+          answerFieldData = {
+              type: request.answerFieldType,
+              selector: request.relativeSelector
+          };
+      }
+      
       const newProfile = {
         questionListContainer: questionListContainerSelector,
         questionBlock: exampleQuestionBlockSelector,
         questionText: questionTextRelativeSelector,
-        answers: request.relativeSelectors
+        answerField: answerFieldData,
       };
       chrome.storage.local.get({ customProfiles: {} }, (result) => {
         const profiles = result.customProfiles;
         profiles[hostname] = newProfile;
         chrome.storage.local.set({ customProfiles: profiles }, () => {
           console.log('Background: Profile saved for', hostname);
-          chrome.tabs.sendMessage(tabId, { action: 'showToast', toast: { icon: 'success', title: `Profile saved for ${hostname}` } });
+          chrome.tabs.sendMessage(tabId, { action: 'showContentToast', toast: { icon: 'success', title: `Profile saved for ${hostname}` } });
         });
       });
       profileCreationState = {};
