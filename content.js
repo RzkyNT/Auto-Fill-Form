@@ -215,6 +215,11 @@ function getAiResponse(prompt) {
   });
 }
 
+function formatAiResponseForDisplay(text) {
+  if (typeof text !== 'string') return text;
+  return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
 /**
  * Creates an overlay that exposes the current smart-fill progress.
  */
@@ -359,8 +364,9 @@ function appendProgressHistory(status, detail) {
   if (!overlay) return;
   const historyEl = overlay.querySelector(".overlay-history");
   if (!historyEl) return;
+  const formattedDetail = formatAiResponseForDisplay(detail); // Apply formatting
   const entry = document.createElement("li");
-  entry.innerHTML = `<strong>${status}</strong>${detail ? ` — ${detail}` : ""}`;
+  entry.innerHTML = `<strong>${status}</strong>${formattedDetail ? ` — ${formattedDetail}` : ""}`;
   historyEl.prepend(entry);
   while (historyEl.children.length > 6) {
     historyEl.removeChild(historyEl.lastChild);
@@ -759,6 +765,27 @@ function createChatOverlay() {
     #ai-chat-form { display: flex; gap: 10px; padding: 15px 20px; border-top: 1px solid rgba(255,255,255,0.1); }
     #ai-chat-input { flex-grow: 1; background: #11161C; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; color: #F2F4F6; }
     #ai-chat-form button { background: #25D366; color: #04070D; border: none; border-radius: 8px; padding: 10px 15px; cursor: pointer; }
+
+    .chat-message-bubble { position: relative; } /* Needed for absolute positioning of button */
+    .copy-message-button {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      border-radius: 4px;
+      padding: 3px;
+      cursor: pointer;
+      opacity: 0; /* Hidden by default */
+      transition: opacity 0.2s ease;
+      color: #F2F4F6;
+    }
+    .chat-message-bubble:hover .copy-message-button {
+      opacity: 1; /* Show on hover */
+    }
+    .copy-message-button:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
   `;
   
   document.head.appendChild(style);
@@ -797,7 +824,34 @@ function createChatOverlay() {
     const bubble = document.createElement('div');
     bubble.className = `chat-message-bubble ${message.sender}-message`;
     if (message.isError) bubble.classList.add('error');
-    bubble.textContent = message.text;
+
+    let messageContent = message.text;
+
+    if (message.sender === 'bot') {
+      messageContent = formatAiResponseForDisplay(messageContent);
+      bubble.innerHTML = messageContent;
+      
+      const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M160-400v400h480v-400H160Zm80 80h320v240H240v-240Zm-80-480v-80h480v80H160Zm560 560v-560h80v560h-80Zm-400-400v-80h480v80H320Zm80-80v-80h480v80H400Zm80-80v-80h480v80H480Z"/></svg>`;
+      const copyButton = document.createElement('button');
+      copyButton.className = 'copy-message-button';
+      copyButton.innerHTML = copyIcon;
+      copyButton.title = 'Copy to clipboard';
+      copyButton.onclick = () => {
+        navigator.clipboard.writeText(message.text)
+          .then(() => {
+            showContentToast('Copied to clipboard!', 'success');
+          })
+          .catch(err => {
+            console.error('Failed to copy text: ', err);
+            showContentToast('Failed to copy text.', 'error');
+          });
+      };
+      bubble.appendChild(copyButton);
+
+    } else {
+      bubble.textContent = messageContent;
+    }
+    
     messagesContainer.appendChild(bubble);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }

@@ -1,6 +1,6 @@
 // background.js
 const smartFillInstruction = "\n\nRespond ONLY with the correct option.";
-const chatSystemInstruction = `You are a helpful and friendly assistant designed for general conversation. Provide clear, concise, and helpful answers.`;
+const chatSystemInstruction = `You are a helpful and friendly assistant designed for general conversation. Provide clear, concise, and helpful answers if user provide a question with several options just use the options as response with explaination.`;
 
 chrome.runtime.onInstalled.addListener(function(details) {
   if (details.reason === 'install') {
