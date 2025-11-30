@@ -2,6 +2,10 @@
 window.addEventListener("fakeFiller:run", doFakeFill);
 window.addEventListener("fakeFiller:smartFill", doSmartFill);
 
+
+let smartFillSession = null;
+let answerToastTimer = null;
+let kahootHighlightedOption = null;
 let quizContentObserver = null;
 let debounceTimer = null;
 let isLightTheme = false; // Global variable to store theme state
@@ -20,6 +24,32 @@ function initializeSmartFillSession() {
     completedSteps: 0,
     currentEntry: null,
   };
+}
+
+
+function ensureSmartFillSession() {
+  if (!smartFillSession) {
+    initializeSmartFillSession();
+  }
+}
+
+// Auto-run if enabled
+function injectSweetAlert2() {
+  // Check if SweetAlert2 is already injected
+  if (document.getElementById('sweetalert2-script')) {
+    return;
+  }
+
+  const cssLink = document.createElement('link');
+  cssLink.href = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2.min.css');
+  cssLink.rel = 'stylesheet';
+  document.head.appendChild(cssLink);
+
+  const jsScript = document.createElement('script');
+  jsScript.id = 'sweetalert2-script';
+  jsScript.src = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2@11.js');
+  jsScript.async = true;
+  document.head.appendChild(jsScript);
 }
 
 function showToast(icon, title, timer = 3000) {
@@ -49,6 +79,18 @@ window.addEventListener('load', async () => {
       setTimeout(doFakeFill, 500);
     }
   });
+
+  
+  // Inject SweetAlert2 here
+  injectSweetAlert2();
+
+  // Create the UI first
+  await createTriggerOverlay();
+  enableUserSelect();
+
+  // Always update the button state on load, but do not try to enter fullscreen automatically.
+  updateFullscreenButtonState();
+});
 
   // Fetch theme preference on load
   chrome.storage.local.get("themeMode", (result) => {
@@ -1705,14 +1747,14 @@ function generateSelector(el) {
         // Removed for better compatibility with dynamic content where positions change.
         // If the selector is not unique enough, the user might need to adjust their selection.
         // The current strategy relies more on classes and tag names.
-        // let sibling = currentEl;
-        // let nth = 1;
-        // while (sibling = sibling.previousElementSibling) {
-        //     if (sibling.tagName === currentEl.tagName) {
-        //         nth++;
-        //     }
-        // }
-        // part += `:nth-of-type(${nth})`;
+        let sibling = currentEl;
+        let nth = 1;
+        while (sibling = sibling.previousElementSibling) {
+            if (sibling.tagName === currentEl.tagName) {
+                nth++;
+            }
+        }
+        part += `:nth-of-type(${nth})`;
 
 
         parts.unshift(part);
@@ -1721,4 +1763,3 @@ function generateSelector(el) {
 
     return parts.join(' > ');
 }
-
