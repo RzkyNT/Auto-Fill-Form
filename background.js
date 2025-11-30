@@ -18,7 +18,7 @@ function shuffle(array) {
   }
 }
 
-function setApiKeyCooldown(apiKey, seconds = 60) {
+function setApiKeyCooldown(apiKey, seconds = 3 ) {
   chrome.storage.local.get({ apiKeys: [] }, ({ apiKeys }) => {
     const updated = apiKeys.map(api => {
       if (api.key === apiKey) {
@@ -142,7 +142,7 @@ async function callGemini(request, sendResponse) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [
-            ...(request.chatContext ? [{ role: "system", parts: [{ text: chatSystemInstruction }] }] : []),
+            ...(request.chatContext ? [{ role: "model", parts: [{ text: chatSystemInstruction }] }] : []),
             {
               role: "user",
               parts: [{ text: request.prompt }] // Use request.prompt directly
@@ -227,7 +227,7 @@ async function callOpenAi(request, sendResponse, config) {
     if (request.chatContext) {
       // For chat context with Chat Completions API
       body.messages = [
-        { role: "system", content: chatSystemInstruction },
+        { role: "model", content: chatSystemInstruction },
         { role: "user", content: request.prompt },
       ];
     } else {
