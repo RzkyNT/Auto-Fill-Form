@@ -102,7 +102,7 @@ function extractOpenAiText(res) {
   return null;
 }
 
-async function callGemini(request, sendResponse) {
+async function callGemini(request, sendResponse, isChat = false) {
   console.log("--- [DEBUG] callGemini: START ---");
   const { apiKeys } = await new Promise(resolve => chrome.storage.local.get({ apiKeys: [] }, resolve));
 
@@ -111,6 +111,8 @@ async function callGemini(request, sendResponse) {
     sendResponse({ error: "No Gemini API keys configured." });
     return;
   }
+  
+  const finalPrompt = isChat ? request.prompt : request.prompt + "\n\nRespond ONLY with the correct option.";
 
   console.log(`--- [DEBUG] callGemini: ${apiKeys.length} keys available. Shuffling...`);
   const shuffledKeys = [...apiKeys];
@@ -139,12 +141,12 @@ async function callGemini(request, sendResponse) {
           contents: [
             {
               role: "user",
-              parts: [{ text: request.prompt + "\n\nRespond ONLY with the correct option." }]
+              parts: [{ text: finalPrompt }]
             }
           ],
           generationConfig: {
             maxOutputTokens: 20000,
-            temperature: 0
+            ...(isChat && { temperature: 0.7 }), // Only include temperature if isChat is true
           },
           safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE" },
@@ -191,7 +193,7 @@ async function callGemini(request, sendResponse) {
   sendResponse({ error: `All Gemini API keys failed. Last error: ${lastError || "Unknown error."}` });
 }
 
-async function callOpenAi(request, sendResponse, config) {
+async function callOpenAi(request, sendResponse, config, isChat = false) {
   console.log("--- [DEBUG] callOpenAi: START ---");
 
   const { baseUrl, endpoint, model, token } = config || {};
@@ -201,15 +203,20 @@ async function callOpenAi(request, sendResponse, config) {
   }
 
   const url = normalizeOpenAiUrl(baseUrl, endpoint);
-  const body = { model };
+  const body = { 
+    model,
+    ...(isChat && { temperature: 0.7 }), // Only include temperature if isChat is true
+  };
+  const finalPrompt = isChat ? request.prompt : request.prompt + "\n\nRespond ONLY with the correct option.";
+
 
   if (endpoint.toLowerCase().includes("responses")) {
-    body.input = request.prompt + "\n\nRespond ONLY with the correct option.";
+    body.input = finalPrompt;
   } else {
     body.messages = [
       {
         role: "user",
-        content: request.prompt + "\n\nRespond ONLY with the correct option.",
+        content: finalPrompt,
       },
     ];
   }
@@ -267,22 +274,34 @@ let profileCreationState = {};
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "callAiApi") {
-    console.log("--- Background: Received request to call AI API ---");
-    chrome.storage.local.get(
-      {
-        aiProvider: "gemini",
-        openAiConfig: {},
-        apiKeys: [],
-      },
-      (storage) => {
-        if (storage.aiProvider === "openai") {
-          callOpenAi(request, sendResponse, storage.openAiConfig);
-        } else {
-          callGemini(request, sendResponse);
-        }
+    console.log("--- Background: Received request to call AI API for Smart Fill ---");
+    chrome.storage.local.get({ aiProvider: "gemini", openAiConfig: {}, apiKeys: [] }, (storage) => {
+      if (storage.aiProvider === "openai") {
+        callOpenAi(request, sendResponse, storage.openAiConfig, false);
+      } else {
+        callGemini(request, sendResponse, false);
       }
-    );
-    return true; // Keep the message channel open for async response
+    });
+    return true;
+  }
+  
+  if (request.action === "callChatApi") {
+    console.log("--- Background: Received request to call Chat API ---");
+    const chatRequest = {
+        ...request,
+        prompt: `You are a helpful and friendly assistant. Your goal is to provide comprehensive answers and explanations in a conversational manner.
+        If the user asks a multiple-choice question, identify the correct option and explain why it is correct. Do not just state the letter.
+        For general questions, provide clear and concise answers.
+        User's question: "${request.prompt}"`
+    };
+    chrome.storage.local.get({ aiProvider: "gemini", openAiConfig: {}, apiKeys: [] }, (storage) => {
+        if (storage.aiProvider === "openai") {
+            callOpenAi(chatRequest, sendResponse, storage.openAiConfig, true);
+        } else {
+            callGemini(chatRequest, sendResponse, true);
+        }
+    });
+    return true;
   }
 
   // --- Profile Creation Workflow ---
@@ -293,57 +312,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       hostname: request.hostname,
       step: 'question',
     };
-    // Trigger the first step
-    chrome.tabs.sendMessage(request.tabId, {
-      action: 'startSelection',
-      options: { type: 'question', multi: false }
-    });
-    return true; // Keep channel open for potential response, though not used here
+    chrome.tabs.sendMessage(request.tabId, { action: 'startSelection', options: { type: 'question', multi: false } });
+    return true;
   }
 
   if (request.action === 'elementSelected') {
     console.log('Background: Received selected element.', request);
     const { tabId, step } = profileCreationState;
-
     if (sender.tab.id !== tabId) {
       console.error("Background: Received elementSelected from wrong tab.");
       return;
     }
-
     if (step === 'question' && request.selector) {
       profileCreationState.questionSelector = request.selector;
       profileCreationState.step = 'answers';
-      
-      // Trigger the next step: select answers
-      chrome.tabs.sendMessage(tabId, {
-        action: 'startSelection',
-        options: { type: 'answer', multi: true }
-      });
-
+      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: { type: 'answer', multi: true } });
     } else if (step === 'answers' && request.selectors) {
       const { hostname, questionSelector } = profileCreationState;
-      const answerSelectors = request.selectors;
-
-      const newProfile = {
-        question: questionSelector,
-        answers: answerSelectors,
-      };
-
-      // Save the complete profile
+      const newProfile = { question: questionSelector, answers: request.selectors };
       chrome.storage.local.get({ customProfiles: {} }, (result) => {
         const profiles = result.customProfiles;
         profiles[hostname] = newProfile;
         chrome.storage.local.set({ customProfiles: profiles }, () => {
           console.log('Background: Profile saved for', hostname);
-          // Send a success notification to the content script
-          chrome.tabs.sendMessage(tabId, {
-            action: 'showToast',
-            toast: { icon: 'success', title: `Profile saved for ${hostname}` }
-          });
+          chrome.tabs.sendMessage(tabId, { action: 'showToast', toast: { icon: 'success', title: `Profile saved for ${hostname}` } });
         });
       });
-
-      // Reset state
       profileCreationState = {};
     }
     return true;

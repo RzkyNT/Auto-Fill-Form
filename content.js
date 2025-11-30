@@ -721,12 +721,15 @@ function createChatOverlay() {
 
   const chatContainer = document.createElement('div');
   chatContainer.id = 'ai-chat-overlay-container';
-  chatContainer.style.display = 'none'; // Initially hidden
+  chatContainer.style.display = 'none';
   chatContainer.innerHTML = `
     <div id="ai-chat-window">
       <div id="ai-chat-header">
         <h3>AI Chat</h3>
-        <button id="ai-chat-close-button">&times;</button>
+        <div>
+          <button id="ai-chat-clear-button" title="Clear History">Clear</button>
+          <button id="ai-chat-close-button" title="Close">&times;</button>
+        </div>
       </div>
       <div id="ai-chat-messages"></div>
       <form id="ai-chat-form">
@@ -738,28 +741,16 @@ function createChatOverlay() {
 
   const style = document.createElement('style');
   style.textContent = `
-    #ai-chat-overlay-container {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-      z-index: 2147483646; display: flex; align-items: center; justify-content: center;
-    }
-    #ai-chat-window {
-      width: 90%; max-width: 500px; height: 70%; max-height: 600px;
-      background: #0B0F14; color: #F2F4F6; border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-      display: flex; flex-direction: column;
-    }
-    #ai-chat-header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 15px 20px; border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-    #ai-chat-close-button {
-      background: none; border: none; font-size: 24px; color: #F2F4F6; cursor: pointer;
-    }
+    #ai-chat-overlay-container { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2147483646; align-items: center; justify-content: center; }
+    #ai-chat-window { width: 90%; max-width: 500px; height: 70%; max-height: 600px; background: #0B0F14; color: #F2F4F6; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: flex; flex-direction: column; }
+    #ai-chat-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    #ai-chat-header div { display: flex; gap: 10px; }
+    #ai-chat-header button { background: none; border: none; font-size: 16px; color: #aaa; cursor: pointer; }
+    #ai-chat-close-button { font-size: 24px; padding: 0 5px; }
+    #ai-chat-clear-button { font-size: 14px; border: 1px solid #555; padding: 4px 8px; border-radius: 6px;}
+    #ai-chat-clear-button:hover, #ai-chat-close-button:hover { color: #fff; }
     #ai-chat-messages { flex-grow: 1; overflow-y: auto; padding: 20px; }
-    .chat-message-bubble {
-      max-width: 85%; padding: 10px 15px; border-radius: 15px;
-      margin-bottom: 12px; line-height: 1.5; word-wrap: break-word;
-    }
+    .chat-message-bubble { max-width: 85%; padding: 10px 15px; border-radius: 15px; margin-bottom: 12px; line-height: 1.5; word-wrap: break-word; }
     .user-message { background: #25D366; color: #04070D; margin-left: auto; border-bottom-right-radius: 4px; }
     .bot-message { background: #11161C; color: #F2F4F6; margin-right: auto; border-bottom-left-radius: 4px; }
     .bot-message.error { background: rgba(255,107,122,0.2); color: #ff6b7a; }
@@ -775,39 +766,40 @@ function createChatOverlay() {
   document.head.appendChild(style);
   document.body.appendChild(chatContainer);
 
-  // --- Chat Logic ---
-  const chatWindow = document.getElementById('ai-chat-window');
   const messagesContainer = document.getElementById('ai-chat-messages');
   const chatForm = document.getElementById('ai-chat-form');
   const input = document.getElementById('ai-chat-input');
   
   document.getElementById('ai-chat-close-button').addEventListener('click', () => chatContainer.style.display = 'none');
   chatContainer.addEventListener('click', (e) => { if (e.target === chatContainer) chatContainer.style.display = 'none'; });
+  document.getElementById('ai-chat-clear-button').addEventListener('click', clearChatHistory);
 
   chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const messageText = input.value.trim();
     if (!messageText) return;
     
-    appendChatMessage(messageText, 'user');
+    const userMessage = { sender: 'user', text: messageText, timestamp: Date.now() };
+    appendChatMessage(userMessage);
+    saveChatMessage(userMessage);
     input.value = '';
     showChatLoadingIndicator();
 
-    chrome.runtime.sendMessage({ action: "callAiApi", prompt: messageText }, (response) => {
+    chrome.runtime.sendMessage({ action: "callAiApi", prompt: messageText, context: 'chat' }, (response) => {
       removeChatLoadingIndicator();
-      if (chrome.runtime.lastError || response.error) {
-        appendChatMessage(chrome.runtime.lastError?.message || response.error, 'bot', true);
-      } else {
-        appendChatMessage(response.answer, 'bot');
-      }
+      const text = chrome.runtime.lastError?.message || response.error || response.answer;
+      const isError = !!(chrome.runtime.lastError || response.error);
+      const botMessage = { sender: 'bot', text: text, timestamp: Date.now(), isError: isError };
+      appendChatMessage(botMessage);
+      saveChatMessage(botMessage);
     });
   });
 
-  function appendChatMessage(text, sender, isError = false) {
+  function appendChatMessage(message) {
     const bubble = document.createElement('div');
-    bubble.className = `chat-message-bubble ${sender}-message`;
-    if (isError) bubble.classList.add('error');
-    bubble.textContent = text;
+    bubble.className = `chat-message-bubble ${message.sender}-message`;
+    if (message.isError) bubble.classList.add('error');
+    bubble.textContent = message.text;
     messagesContainer.appendChild(bubble);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
@@ -825,6 +817,27 @@ function createChatOverlay() {
     const indicator = document.getElementById('chat-loading-indicator');
     if (indicator) indicator.remove();
   }
+
+  async function saveChatMessage(message) {
+    const { aiChatHistory = [] } = await chrome.storage.local.get('aiChatHistory');
+    aiChatHistory.push(message);
+    const cappedHistory = aiChatHistory.slice(-50); // Keep last 50 messages
+    await chrome.storage.local.set({ aiChatHistory: cappedHistory });
+  }
+
+  async function loadChatHistory() {
+    const { aiChatHistory = [] } = await chrome.storage.local.get('aiChatHistory');
+    messagesContainer.innerHTML = '';
+    aiChatHistory.forEach(appendChatMessage);
+  }
+
+  function clearChatHistory() {
+    messagesContainer.innerHTML = '';
+    chrome.storage.local.remove('aiChatHistory');
+    appendChatMessage({ sender: 'bot', text: 'Chat history cleared.' });
+  }
+
+  loadChatHistory(); // Load history when overlay is created
 }
 
 /**
