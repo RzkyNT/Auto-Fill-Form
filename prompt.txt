@@ -1,0 +1,12 @@
+ * Format Tanggal Relatif pada history.html ("Time Ago"): Alih-alih menampilkan tanggal dan waktu lengkap (toLocaleString), Anda bisa
+     menampilkannya dalam format relatif seperti "5 menit yang lalu", "kemarin", atau "2 hari yang lalu". Ini lebih intuitif
+     bagi pengguna. Anda bisa menggunakan library kecil seperti timeago.js atau membuat fungsi sederhana sendiri.
+   * Tutup Accordion Secara Default: Saat ini semua grup hostname terbuka. Untuk tampilan awal yang lebih bersih, Anda bisa
+     membuat semua grup (<details>) tertutup secara default. Pengguna dapat membukanya satu per satu sesuai kebutuhan.
+   * Feedback Visual Saat Aksi: Saat tombol "Export" atau "Delete" diklik, berikan feedback visual. Misalnya, nonaktifkan
+     tombol dan ubah teksnya menjadi "Exporting..." atau "Deleting..." selama proses berlangsung untuk memberi tahu pengguna
+     bahwa sesuatu sedang terjadi.
+
+        * Virtual Scrolling (Lanjutan): Ini adalah teknik yang lebih canggih dari paginasi. Alih-alih merender semua baris tabel,
+     kita hanya merender baris yang terlihat di layar. Saat pengguna scroll, baris yang hilang dari pandangan akan dihapus  
+     dari DOM dan baris baru akan ditambahkan. Ini memberikan performa terbaik untuk daftar yang sangat panjang.
