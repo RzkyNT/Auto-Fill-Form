@@ -102,7 +102,8 @@ function extractOpenAiText(res) {
   return null;
 }
 
-async function callGemini(request, sendResponse, isChat = false) {
+// callGemini now expects the final, prepared prompt in request.prompt
+async function callGemini(request, sendResponse) {
   console.log("--- [DEBUG] callGemini: START ---");
   const { apiKeys } = await new Promise(resolve => chrome.storage.local.get({ apiKeys: [] }, resolve));
 
@@ -112,8 +113,6 @@ async function callGemini(request, sendResponse, isChat = false) {
     return;
   }
   
-  const finalPrompt = isChat ? request.prompt : request.prompt + "\n\nRespond ONLY with the correct option.";
-
   console.log(`--- [DEBUG] callGemini: ${apiKeys.length} keys available. Shuffling...`);
   const shuffledKeys = [...apiKeys];
   shuffle(shuffledKeys);
@@ -141,12 +140,12 @@ async function callGemini(request, sendResponse, isChat = false) {
           contents: [
             {
               role: "user",
-              parts: [{ text: finalPrompt }]
+              parts: [{ text: request.prompt }] // Use request.prompt directly
             }
           ],
           generationConfig: {
             maxOutputTokens: 20000,
-            ...(isChat && { temperature: 0.7 }), // Only include temperature if isChat is true
+            ...(request.chatContext && { temperature: 0.7 }), // Conditionally apply temperature for chat
           },
           safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE" },
@@ -193,7 +192,8 @@ async function callGemini(request, sendResponse, isChat = false) {
   sendResponse({ error: `All Gemini API keys failed. Last error: ${lastError || "Unknown error."}` });
 }
 
-async function callOpenAi(request, sendResponse, config, isChat = false) {
+// callOpenAi now expects the final, prepared prompt in request.prompt
+async function callOpenAi(request, sendResponse, config) {
   console.log("--- [DEBUG] callOpenAi: START ---");
 
   const { baseUrl, endpoint, model, token } = config || {};
@@ -205,18 +205,22 @@ async function callOpenAi(request, sendResponse, config, isChat = false) {
   const url = normalizeOpenAiUrl(baseUrl, endpoint);
   const body = { 
     model,
-    ...(isChat && { temperature: 0.7 }), // Only include temperature if isChat is true
+    ...(request.chatContext && { temperature: 0.7 }), // Conditionally apply temperature for chat
   };
-  const finalPrompt = isChat ? request.prompt : request.prompt + "\n\nRespond ONLY with the correct option.";
-
-
-  if (endpoint.toLowerCase().includes("responses")) {
-    body.input = finalPrompt;
+  
+  // Construct messages array based on chatContext
+  if (request.chatContext) {
+    body.messages = [
+      { role: "system", content: chatSystemInstruction }, // Use system role for OpenAI
+      { role: "user", content: request.prompt }, // User's message directly
+    ];
+  } else if (endpoint.toLowerCase().includes("responses")) {
+    body.input = request.prompt; // For specific legacy endpoint (e.g., gpt-3.5-turbo-instruct)
   } else {
     body.messages = [
       {
         role: "user",
-        content: finalPrompt,
+        content: request.prompt,
       },
     ];
   }
@@ -273,35 +277,38 @@ async function callOpenAi(request, sendResponse, config, isChat = false) {
 let profileCreationState = {};
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "callAiApi") {
+  // Instructions for different contexts
+  const smartFillInstruction = "\n\nRespond ONLY with the correct option.";
+  const chatSystemInstruction = `You are a helpful and friendly assistant designed for general conversation. Provide clear, concise, and helpful answers.`;
+
+  if (request.action === "callAiApi") { // For Smart Fill
     console.log("--- Background: Received request to call AI API for Smart Fill ---");
+    const finalPrompt = request.prompt + smartFillInstruction;
     chrome.storage.local.get({ aiProvider: "gemini", openAiConfig: {}, apiKeys: [] }, (storage) => {
-      if (storage.aiProvider === "openai") {
-        callOpenAi(request, sendResponse, storage.openAiConfig, false);
-      } else {
-        callGemini(request, sendResponse, false);
-      }
+      // Pass chatContext: false for Smart Fill
+      callAiApiInternal({ ...request, prompt: finalPrompt, chatContext: false }, sendResponse, storage);
     });
     return true;
   }
   
-  if (request.action === "callChatApi") {
+  if (request.action === "callChatApi") { // For Chat AI
     console.log("--- Background: Received request to call Chat API ---");
-    const chatRequest = {
-        ...request,
-        prompt: `You are a helpful and friendly assistant. Your goal is to provide comprehensive answers and explanations in a conversational manner.
-        If the user asks a multiple-choice question, identify the correct option and explain why it is correct. Do not just state the letter.
-        For general questions, provide clear and concise answers.
-        User's question: "${request.prompt}"`
-    };
+    // For chat, we simply pass the original request.prompt. The system instruction
+    // will be used by callGemini/callOpenAi based on chatContext: true
     chrome.storage.local.get({ aiProvider: "gemini", openAiConfig: {}, apiKeys: [] }, (storage) => {
-        if (storage.aiProvider === "openai") {
-            callOpenAi(chatRequest, sendResponse, storage.openAiConfig, true);
-        } else {
-            callGemini(chatRequest, sendResponse, true);
-        }
+      // Pass chatContext: true for Chat AI
+      callAiApiInternal({ ...request, prompt: request.prompt, chatContext: true }, sendResponse, storage);
     });
     return true;
+  }
+
+  // Internal helper to avoid code duplication in onMessage listener
+  function callAiApiInternal(req, resSender, storage) {
+    if (storage.aiProvider === "openai") {
+      callOpenAi(req, resSender, storage.openAiConfig);
+    } else {
+      callGemini(req, resSender);
+    }
   }
 
   // --- Profile Creation Workflow ---
