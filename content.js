@@ -619,12 +619,10 @@ async function createTriggerOverlay() {
 
   if (!shouldShowOverlay) return;
 
-  // Check for the container ID instead of the button ID
   if (document.getElementById('smart-fill-trigger-container')) return;
 
   const triggerContainer = document.createElement("div");
   triggerContainer.id = "smart-fill-trigger-container";
-  triggerContainer.className = "tooltip-container"; // Use class for styling consistency
   triggerContainer.innerHTML = `
     <button id="smart-fill-trigger-button">
         <div class="smart-fill-icon">
@@ -633,19 +631,9 @@ async function createTriggerOverlay() {
             <span></span>
         </div>
     </button>
-    <div class="tooltip-content">
-        <div class="social-icons">
-            <a href="#" id="run-ai-button" class="social-icon" title="Run AI">
-                ${runAiIcon}
-            </a>
-            <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">
-                ${fullscreenEnterIcon}
-            </a>
-            <a href="#" id="reset-session-button" class="social-icon" title="Reset Session">
-                ${resetSessionIcon}
-            </a>
-        </div>
-    </div>
+    <a href="#" id="run-ai-button" class="social-icon" title="Run AI">${runAiIcon}</a>
+    <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">${fullscreenEnterIcon}</a>
+    <a href="#" id="reset-session-button" class="social-icon" title="Reset Session">${resetSessionIcon}</a>
   `;
 
   const style = document.createElement("style");
@@ -656,11 +644,15 @@ async function createTriggerOverlay() {
       bottom: 20px;
       right: 20px;
       z-index: 2147483645;
-    }
-    /* Original button styles */
-    #smart-fill-trigger-button {
       width: 64px;
       height: 64px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #smart-fill-trigger-button {
+      width: 100%;
+      height: 100%;
       background: #EDE1FF;
       border-radius: 18px;
       border: none;
@@ -669,7 +661,12 @@ async function createTriggerOverlay() {
       justify-content: center;
       cursor: pointer;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-      transition: transform .2s ease, box-shadow .2s ease;
+      transition: transform .3s cubic-bezier(0.68, -0.55, 0.265, 1.55), box-shadow .2s ease;
+      position: relative;
+      z-index: 10;
+    }
+    #smart-fill-trigger-container.active #smart-fill-trigger-button {
+      transform: rotate(45deg);
     }
     #smart-fill-trigger-button:hover {
       transform: scale(1.06);
@@ -679,7 +676,11 @@ async function createTriggerOverlay() {
       display: flex;
       flex-direction: column;
       gap: 5px;
+      transition: transform 0.2s ease;
     }
+     #smart-fill-trigger-container.active #smart-fill-trigger-button .smart-fill-icon {
+        transform: rotate(-45deg);
+     }
     #smart-fill-trigger-button .smart-fill-icon span {
       width: 24px;
       height: 4px;
@@ -687,43 +688,8 @@ async function createTriggerOverlay() {
       border-radius: 4px;
     }
 
-    /* Tooltip styles from prompt.txt */
-    .tooltip-container {
-        position: relative;
-        display: inline-block;
-        font-family: "Arial", sans-serif;
-    }
-
-    .tooltip-content {
-        position: absolute;
-        bottom: 105%;
-        left: 50%;
-        transform: translateX(-50%) scale(0.8);
-        background: white;
-        border-radius: 15px;
-        padding: 15px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-        opacity: 0;
-        visibility: hidden;
-        transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-        z-index: 100;
-        pointer-events: none;
-    }
-
-    #smart-fill-trigger-container.active .tooltip-content {
-        opacity: 1;
-        visibility: visible;
-        transform: translateX(-50%) scale(1);
-        pointer-events: auto;
-    }
-
-    .social-icons {
-        display: flex;
-        justify-content: center;
-        gap: 12px;
-    }
-
     .social-icon {
+        position: absolute;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -731,14 +697,15 @@ async function createTriggerOverlay() {
         height: 48px;
         border-radius: 50%;
         background: #f0f0f0;
-        transition: all 0.3s ease;
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         text-decoration: none;
-    }
-
-    .social-icon:hover {
-        transform: translateY(-3px) scale(1.05);
-        box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
+        
+        /* Hidden state */
+        opacity: 0;
+        visibility: hidden;
+        transform: scale(0.5);
+        transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        z-index: 5;
     }
 
     .social-icon svg {
@@ -747,59 +714,35 @@ async function createTriggerOverlay() {
         fill: #333;
     }
 
+    #smart-fill-trigger-container.active .social-icon {
+        opacity: 1;
+        visibility: visible;
+        transform: scale(1);
+    }
+    
+    /* Individual button positions when active */
+    #smart-fill-trigger-container.active #run-ai-button {
+      transform: translate(-75px, 0); /* Left */
+      transition-delay: 0.05s;
+    }
+    #smart-fill-trigger-container.active #fullscreen-button {
+      transform: translate(0, -75px); /* Up */
+      transition-delay: 0.1s;
+    }
+    #smart-fill-trigger-container.active #reset-session-button {
+      transform: translate(-65px, -65px); /* Diagonal Up-Left */
+      transition-delay: 0.15s;
+    }
+
+    .social-icon:hover {
+        transform: translateY(-3px) scale(1.05);
+        box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
+    }
     #run-ai-button:hover { background: #c8e6c9; }
-    #run-ai-button.processing {
-      background-color: #ffcdd2;
-    }
-    #run-ai-button.processing:hover {
-      background-color: #ef9a9a;
-    }
+    #run-ai-button.processing, #run-ai-button.processing:hover { background-color: #ffcdd2; }
     #fullscreen-button:hover { background: #bbdefb; }
-    #fullscreen-button.active {
-      background-color: #81d4fa;
-      box-shadow: 0 8px 15px rgba(129, 212, 250, 0.4);
-    }
-    #fullscreen-button.active:hover {
-      background-color: #4fc3f7;
-    }
+    #fullscreen-button.active, #fullscreen-button.active:hover { background-color: #81d4fa; }
     #reset-session-button:hover { background: #ffecb3; }
-
-    /* Responsive Design for Mobile */
-    @media (max-width: 768px) {
-      #smart-fill-trigger-button {
-        width: 56px;
-        height: 56px;
-      }
-      .tooltip-content {
-        padding: 12px;
-      }
-      .social-icon {
-        width: 44px;
-        height: 44px;
-      }
-      .social-icon svg {
-        width: 22px;
-        height: 22px;
-      }
-    }
-
-    @media (max-width: 480px) {
-      #smart-fill-trigger-button {
-        width: 50px;
-        height: 50px;
-      }
-      .tooltip-content {
-        padding: 10px;
-      }
-      .social-icon {
-        width: 40px;
-        height: 40px;
-      }
-      .social-icon svg {
-        width: 20px;
-        height: 20px;
-      }
-    }
   `;
 
   document.head.appendChild(style);
@@ -818,7 +761,7 @@ async function createTriggerOverlay() {
 
   runAiButton.addEventListener('click', (e) => {
     e.preventDefault();
-    triggerContainer.classList.remove('active'); // Hide tooltip after action
+    triggerContainer.classList.remove('active'); // Hide menu after action
 
     const isProcessing = runAiButton.classList.contains('processing');
     if (isProcessing) {
@@ -837,7 +780,7 @@ async function createTriggerOverlay() {
   fullscreenButton.addEventListener('click', (e) => {
     e.preventDefault();
     handleFullscreen();
-    triggerContainer.classList.remove('active'); // Hide tooltip after action
+    triggerContainer.classList.remove('active'); // Hide menu after action
   });
 
   resetSessionButton.addEventListener('click', (e) => {
@@ -851,7 +794,7 @@ async function createTriggerOverlay() {
         showContentToast("Current page session has been reset.");
       }
     });
-    triggerContainer.classList.remove('active'); // Hide tooltip after action
+    triggerContainer.classList.remove('active'); // Hide menu after action
   });
   
   // Set initial state and listen for changes
@@ -865,7 +808,7 @@ async function createTriggerOverlay() {
     updateFullscreenButtonState();
   });
 
-  // Add listener to close tooltip when clicking outside
+  // Add listener to close menu when clicking outside
   document.addEventListener('click', (e) => {
     // If the click is outside the trigger container and the container is active
     if (!triggerContainer.contains(e.target) && triggerContainer.classList.contains('active')) {
