@@ -35,28 +35,26 @@ function ensureSmartFillSession() {
 
 // Auto-run if enabled
 function injectSweetAlert2() {
-  // Check if SweetAlert2 is already injected
-  if (document.getElementById('sweetalert2-script')) {
-    return;
-  }
+  return new Promise((resolve) => {
+    if (window.Swal) return resolve(true); // Sudah loaded
 
-  const cssLink = document.createElement('link');
-  cssLink.href = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2.min.css');
-  cssLink.rel = 'stylesheet';
-  document.head.appendChild(cssLink);
+    const cssLink = document.createElement('link');
+    cssLink.rel = 'stylesheet';
+    cssLink.href = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2.min.css');
+    document.head.appendChild(cssLink);
 
-  const jsScript = document.createElement('script');
-  jsScript.id = 'sweetalert2-script';
-  jsScript.src = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2.min.js');
-  jsScript.async = true;
-  document.head.appendChild(jsScript);
+    const jsScript = document.createElement('script');
+    jsScript.src = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2.min.js');
+    jsScript.onload = () => resolve(true); // <--- MENUNGGU SELESAI
+    document.head.appendChild(jsScript);
+  });
 }
 
-function showToast(icon, title, timer = 3000) {
-  // Ensure Swal is available before trying to use it
-  if (typeof Swal === 'undefined') {
-    console.warn('SweetAlert2 not loaded, falling back to alert:', title);
-    console.error('SweetAlert2 not loaded. Message:', title);
+async function showToast(icon, title, timer = 3000) {
+  await injectSweetAlert2(); // <--- pastikan loaded dulu
+
+  if (!window.Swal) {
+    alert(title);
     return;
   }
 
@@ -64,10 +62,10 @@ function showToast(icon, title, timer = 3000) {
     toast: true,
     position: 'top-end',
     showConfirmButton: false,
-    timer: timer,
+    timer,
     timerProgressBar: true,
-    icon: icon,
-    text: title, // Changed from title: title to text: title
+    icon,
+    text: title,
     background: isLightTheme ? '#ffffff' : '#0B0F14',
     color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
   });
