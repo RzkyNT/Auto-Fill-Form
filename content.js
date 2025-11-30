@@ -2,11 +2,9 @@
 window.addEventListener("fakeFiller:run", doFakeFill);
 window.addEventListener("fakeFiller:smartFill", doSmartFill);
 
-let smartFillSession = null;
-let answerToastTimer = null;
-let kahootHighlightedOption = null;
 let quizContentObserver = null;
 let debounceTimer = null;
+let isLightTheme = false; // Global variable to store theme state
 
 function debounce(func, delay) {
   clearTimeout(debounceTimer);
@@ -24,31 +22,6 @@ function initializeSmartFillSession() {
   };
 }
 
-function ensureSmartFillSession() {
-  if (!smartFillSession) {
-    initializeSmartFillSession();
-  }
-}
-
-// Auto-run if enabled
-function injectSweetAlert2() {
-  // Check if SweetAlert2 is already injected
-  if (document.getElementById('sweetalert2-script')) {
-    return;
-  }
-
-  const cssLink = document.createElement('link');
-  cssLink.href = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2.min.css');
-  cssLink.rel = 'stylesheet';
-  document.head.appendChild(cssLink);
-
-  const jsScript = document.createElement('script');
-  jsScript.id = 'sweetalert2-script';
-  jsScript.src = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2@11.js');
-  jsScript.async = true;
-  document.head.appendChild(jsScript);
-}
-
 function showToast(icon, title, timer = 3000) {
   // Ensure Swal is available before trying to use it
   if (typeof Swal === 'undefined') {
@@ -64,7 +37,9 @@ function showToast(icon, title, timer = 3000) {
     timer: timer,
     timerProgressBar: true,
     icon: icon,
-    title: title
+    title: title,
+    background: isLightTheme ? '#ffffff' : '#0B0F14',
+    color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
   });
 }
 
@@ -75,16 +50,10 @@ window.addEventListener('load', async () => {
     }
   });
 
-  // Inject SweetAlert2 here
-  injectSweetAlert2();
-
-  // Create the UI first
-  await createTriggerOverlay();
-  enableUserSelect();
-
-  // Always update the button state on load, but do not try to enter fullscreen automatically.
-  updateFullscreenButtonState();
-});
+  // Fetch theme preference on load
+  chrome.storage.local.get("themeMode", (result) => {
+    isLightTheme = (result.themeMode === "light");
+  });
 
 async function doFakeFill() {
   const isGForm = window.location.hostname === 'docs.google.com' && window.location.pathname.includes('/forms/');

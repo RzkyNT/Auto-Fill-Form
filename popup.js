@@ -212,7 +212,9 @@ profilesList.addEventListener('click', (e) => {
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: 'Yes, delete it!',
-      cancelButtonText: 'No, cancel'
+      cancelButtonText: 'No, cancel',
+      background: darkModeToggle.checked ? '#0B0F14' : '#ffffff', // Theme-aware
+      color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b' // Theme-aware
     }).then((result) => {
       if (result.isConfirmed) {
         chrome.storage.local.get({ customProfiles: {} }, (res) => {
@@ -220,7 +222,13 @@ profilesList.addEventListener('click', (e) => {
           delete profiles[hostname];
           chrome.storage.local.set({ customProfiles: profiles }, () => {
             loadProfiles();
-            Swal.fire('Deleted!', 'The profile has been deleted.', 'success');
+            Swal.fire({
+              title: 'Deleted!',
+              text: 'The profile has been deleted.',
+              icon: 'success',
+              background: darkModeToggle.checked ? '#0B0F14' : '#ffffff', // Theme-aware
+              color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b' // Theme-aware
+            });
           });
         });
       }
@@ -231,13 +239,25 @@ profilesList.addEventListener('click', (e) => {
 addNewProfileButton.addEventListener('click', async () => {
   const tab = await getActiveTab();
   if (!tab || !tab.url) {
-    Swal.fire('Error', 'Could not find an active tab. Please open a tab and try again.', 'error');
+    Swal.fire({
+      title: 'Error',
+      text: 'Could not find an active tab. Please open a tab and try again.',
+      icon: 'error',
+      background: darkModeToggle.checked ? '#0B0F14' : '#ffffff', // Theme-aware
+      color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b' // Theme-aware
+    });
     return;
   }
   
   if (tab.url.startsWith('chrome://')) {
-      Swal.fire('Error', 'Cannot create profiles for Chrome system pages.', 'error');
-      return;
+    Swal.fire({
+      title: 'Error',
+      text: 'Cannot create profiles for Chrome system pages.',
+      icon: 'error',
+      background: darkModeToggle.checked ? '#0B0F14' : '#ffffff', // Theme-aware
+      color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b' // Theme-aware
+    });
+    return;
   }
 
   const hostname = new URL(tab.url).hostname;
