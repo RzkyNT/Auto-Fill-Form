@@ -1,4 +1,4 @@
-# Gemini CLI Extension
+# Smart FIll Extension
 
 This Chrome Extension enhances web form filling and interaction with AI capabilities, including smart form filling, custom profile creation for dynamic pages, and an integrated AI chat.
 
