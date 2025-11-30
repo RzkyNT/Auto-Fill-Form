@@ -69,6 +69,28 @@
     .history-clear:hover {
       background: rgba(255,107,122,0.12);
     }
+    .hostname-actions button {
+        font-size: 0.8em;
+        padding: 6px 12px;
+        border-radius: 6px;
+        margin-left: 8px;
+    }
+    .export-btn {
+        background-color: transparent;
+        color: #3498db;
+        border: 1px solid rgba(52,152,219,0.6);
+    }
+    .export-btn:hover {
+        background: rgba(52,152,219,0.12);
+    }
+    .delete-btn {
+        background-color: transparent;
+        color: #e74c3c;
+        border: 1px solid rgba(231,76,60,0.6);
+    }
+    .delete-btn:hover {
+        background: rgba(231,76,60,0.12);
+    }
     #search-history {
       width: 100%;
       max-width: 400px;
@@ -111,6 +133,10 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 10px;
+    }
+    .history-group-summary .hostname-text {
+        flex-grow: 1;
     }
     .history-group-summary::-webkit-details-marker { display: none; }
     .history-group-summary::after {
@@ -169,6 +195,7 @@
   </div>
   <div id="history-container"></div>
   <script src="vendor/sweetalert2/sweetalert2@11.js"></script>
+  <script src="vendor/sheetjs/xlsx.full.min.js"></script>
   <script src="history.js"></script>
 </body>
 </html>
