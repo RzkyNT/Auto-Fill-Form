@@ -502,6 +502,7 @@ const fullscreenExitIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" 
 const runAiIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>`;
 const cancelAiIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>`;
 const resetSessionIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/></svg>`;
+const chatIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M80-240v-480h800v480H80Zm120-80h560v-320H200v320Zm0 0v-320 320Z"/></svg>`;
 
 /**
  * Shows a simple toast notification on the page.
@@ -510,66 +511,41 @@ const resetSessionIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" vi
  */
 function showContentToast(message, type = 'success') {
   const toastId = 'smart-fill-content-toast';
-  // Remove existing toast if any
   const existingToast = document.getElementById(toastId);
-  if (existingToast) {
-    existingToast.remove();
-  }
+  if (existingToast) existingToast.remove();
 
   const toast = document.createElement('div');
   toast.id = toastId;
   toast.textContent = message;
   
-  // Basic styling
-  toast.style.position = 'fixed';
-  toast.style.bottom = '20px';
-  toast.style.left = '50%';
-  toast.style.transform = 'translateX(-50%)';
-  toast.style.padding = '12px 20px';
-  toast.style.borderRadius = '8px';
-  toast.style.color = 'white';
-  toast.style.zIndex = '2147483647';
-  toast.style.fontFamily = '"Segoe UI", sans-serif';
-  toast.style.fontSize = '14px';
-  toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
-  toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-  toast.style.opacity = '0';
-  toast.style.transform = 'translate(-50%, 10px)';
-
-  if (type === 'error') {
-    toast.style.backgroundColor = '#d32f2f';
-  } else {
-    toast.style.backgroundColor = '#25D366';
-  }
+  Object.assign(toast.style, {
+    position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
+    padding: '12px 20px', borderRadius: '8px', color: 'white', zIndex: '2147483647',
+    fontFamily: '"Segoe UI", sans-serif', fontSize: '14px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+    transition: 'opacity 0.3s ease, transform 0.3s ease', opacity: '0', transform: 'translate(-50%, 10px)'
+  });
+  toast.style.backgroundColor = type === 'error' ? '#d32f2f' : '#25D366';
 
   document.body.appendChild(toast);
 
-  // Animate in
   setTimeout(() => {
     toast.style.opacity = '1';
     toast.style.transform = 'translateX(-50%)';
   }, 10);
 
-  // Animate out and remove
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transform = 'translate(-50%, 10px)';
-    setTimeout(() => {
-      if (toast.parentElement) {
-        toast.parentElement.removeChild(toast);
-      }
-    }, 300);
+    setTimeout(() => toast.remove(), 300);
   }, 3000);
 }
 
-
 /**
- * Updates the fullscreen button's icon and style based on the current state.
+ * Updates the fullscreen button's icon and style.
  */
 function updateFullscreenButtonState() {
   const fullscreenButton = document.getElementById('fullscreen-button');
   if (!fullscreenButton) return;
-
   if (document.fullscreenElement) {
     fullscreenButton.classList.add('active');
     fullscreenButton.innerHTML = fullscreenExitIcon;
@@ -580,6 +556,7 @@ function updateFullscreenButtonState() {
     fullscreenButton.title = 'Enter Fullscreen';
   }
 }
+
 
 
 /**
@@ -604,217 +581,250 @@ function updateAiButtonState(isProcessing) {
  * Creates a floating action button to trigger the Smart Fill.
  */
 async function createTriggerOverlay() {
-  // Fetch custom profiles to determine if an overlay should be created
   const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
   const host = window.location.hostname;
   const hasCustomProfile = !!customProfiles[host];
-
-  const isGForm = host === 'docs.google.com' && window.location.pathname.includes('/forms/');
-  const isWayground = host.includes('wayground.com');
-  const isQuizziz = host.includes('quizziz.com');
-  const isKahoot = host.includes('kahoot.it') || host.includes('play.kahoot.it');
-  const isCbt = host === '115.124.76.241';
-
-  const shouldShowOverlay = hasCustomProfile || isGForm || isWayground || isQuizziz || isKahoot || isCbt;
+  const supportedPlatforms = ['docs.google.com', 'wayground.com', 'quizziz.com', 'kahoot.it', 'play.kahoot.it', '115.124.76.241'];
+  const shouldShowOverlay = hasCustomProfile || supportedPlatforms.some(p => host.includes(p));
 
   if (!shouldShowOverlay) return;
-
   if (document.getElementById('smart-fill-trigger-container')) return;
 
   const triggerContainer = document.createElement("div");
   triggerContainer.id = "smart-fill-trigger-container";
   triggerContainer.innerHTML = `
     <button id="smart-fill-trigger-button">
-        <div class="smart-fill-icon">
-            <span></span>
-            <span></span>
-            <span></span>
-        </div>
+        <div class="smart-fill-icon"><span></span><span></span><span></span></div>
     </button>
     <a href="#" id="run-ai-button" class="social-icon" title="Run AI">${runAiIcon}</a>
     <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">${fullscreenEnterIcon}</a>
     <a href="#" id="reset-session-button" class="social-icon" title="Reset Session">${resetSessionIcon}</a>
+    <a href="#" id="chat-overlay-button" class="social-icon" title="AI Chat">${chatIcon}</a>
   `;
 
   const style = document.createElement("style");
   style.id = "smart-fill-trigger-style";
   style.textContent = `
     #smart-fill-trigger-container {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 2147483645;
-      width: 64px;
-      height: 64px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
+      position: fixed; bottom: 20px; right: 20px; z-index: 2147483645;
+      width: 64px; height: 64px; display: flex; justify-content: center; align-items: center;
     }
     #smart-fill-trigger-button {
-      width: 100%;
-      height: 100%;
-      background: #EDE1FF;
-      border-radius: 18px;
-      border: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
+      width: 100%; height: 100%; background: #EDE1FF; border-radius: 18px; border: none;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
       transition: transform .3s cubic-bezier(0.68, -0.55, 0.265, 1.55), box-shadow .2s ease;
-      position: relative;
-      z-index: 10;
+      position: relative; z-index: 10;
     }
-    #smart-fill-trigger-container.active #smart-fill-trigger-button {
-      transform: rotate(45deg);
-    }
-    #smart-fill-trigger-button:hover {
-      transform: scale(1.06);
-      box-shadow: 0 6px 15px rgba(0,0,0,0.28);
-    }
-    #smart-fill-trigger-button .smart-fill-icon {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      transition: transform 0.2s ease;
-    }
-     #smart-fill-trigger-container.active #smart-fill-trigger-button .smart-fill-icon {
-        transform: rotate(-45deg);
-     }
-    #smart-fill-trigger-button .smart-fill-icon span {
-      width: 24px;
-      height: 4px;
-      background: #5E3BAE;
-      border-radius: 4px;
-    }
-
+    #smart-fill-trigger-container.active #smart-fill-trigger-button { transform: rotate(45deg); }
+    #smart-fill-trigger-button:hover { box-shadow: 0 6px 15px rgba(0,0,0,0.28); }
+    #smart-fill-trigger-button .smart-fill-icon { display: flex; flex-direction: column; gap: 5px; transition: transform 0.2s ease; }
+    #smart-fill-trigger-container.active #smart-fill-trigger-button .smart-fill-icon { transform: rotate(-45deg); }
+    #smart-fill-trigger-button .smart-fill-icon span { width: 24px; height: 4px; background: #5E3BAE; border-radius: 4px; }
     .social-icon {
-        position: absolute;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        background: #f0f0f0;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        text-decoration: none;
-        
-        /* Hidden state */
-        opacity: 0;
-        visibility: hidden;
-        transform: scale(0.5);
-        transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-        z-index: 5;
+      position: absolute; display: flex; align-items: center; justify-content: center;
+      width: 48px; height: 48px; border-radius: 50%; background: #f0f0f0;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); text-decoration: none;
+      opacity: 0; visibility: hidden; transform: scale(0.5);
+      transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55); z-index: 5;
     }
-
-    .social-icon svg {
-        width: 24px;
-        height: 24px;
-        fill: #333;
-    }
-
     #smart-fill-trigger-container.active .social-icon {
         opacity: 1;
         visibility: visible;
         transform: scale(1);
     }
     
-    /* Individual button positions when active */
+    /* Correctly arrange all 4 buttons in a 90-degree arc */
     #smart-fill-trigger-container.active #run-ai-button {
-      transform: translate(-75px, 0); /* Left */
+      transform: translate(0, -80px); /* Top */
       transition-delay: 0.05s;
     }
-    #smart-fill-trigger-container.active #fullscreen-button {
-      transform: translate(0, -75px); /* Up */
+    #smart-fill-trigger-container.active #chat-overlay-button {
+      transform: translate(-57px, -57px); /* Diagonal Up-Left */
       transition-delay: 0.1s;
     }
-    #smart-fill-trigger-container.active #reset-session-button {
-      transform: translate(-65px, -65px); /* Diagonal Up-Left */
+    #smart-fill-trigger-container.active #fullscreen-button {
+      transform: translate(-80px, 0); /* Left */
       transition-delay: 0.15s;
     }
+     #smart-fill-trigger-container.active #reset-session-button {
+      transform: translate(-70px, 40px); /* Custom position below left */
+      transition-delay: 0.2s;
+    }
 
-    .social-icon:hover {
-        transform: translateY(-3px) scale(1.05);
-        box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
+    .social-icon:hover { 
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2); 
     }
     #run-ai-button:hover { background: #c8e6c9; }
     #run-ai-button.processing, #run-ai-button.processing:hover { background-color: #ffcdd2; }
     #fullscreen-button:hover { background: #bbdefb; }
     #fullscreen-button.active, #fullscreen-button.active:hover { background-color: #81d4fa; }
     #reset-session-button:hover { background: #ffecb3; }
+    #chat-overlay-button:hover { background: #d1c4e9; }
   `;
 
   document.head.appendChild(style);
   document.body.appendChild(triggerContainer);
 
-  const mainButton = document.getElementById('smart-fill-trigger-button');
-  const runAiButton = document.getElementById('run-ai-button');
-  const fullscreenButton = document.getElementById('fullscreen-button');
-  const resetSessionButton = document.getElementById('reset-session-button');
-
-  // Toggle tooltip visibility on click of the main button
-  mainButton.addEventListener('click', (e) => {
+  document.getElementById('smart-fill-trigger-button').addEventListener('click', (e) => {
     e.preventDefault();
     triggerContainer.classList.toggle('active');
   });
 
-  runAiButton.addEventListener('click', (e) => {
+  document.getElementById('run-ai-button').addEventListener('click', (e) => {
     e.preventDefault();
-    triggerContainer.classList.remove('active'); // Hide menu after action
-
-    const isProcessing = runAiButton.classList.contains('processing');
+    triggerContainer.classList.remove('active');
+    const isProcessing = e.currentTarget.classList.contains('processing');
     if (isProcessing) {
-      // If AI is running, cancel it.
       ensureSmartFillSession();
-      if (smartFillSession) {
-        smartFillSession.stopRequested = true;
-      }
-      updateAiButtonState(false); // Immediately reflect cancellation
+      if (smartFillSession) smartFillSession.stopRequested = true;
+      updateAiButtonState(false);
     } else {
-      // If AI is not running, start it.
       doSmartFill();
     }
   }, { capture: true });
 
-  fullscreenButton.addEventListener('click', (e) => {
+  document.getElementById('fullscreen-button').addEventListener('click', (e) => {
     e.preventDefault();
     handleFullscreen();
-    triggerContainer.classList.remove('active'); // Hide menu after action
+    triggerContainer.classList.remove('active');
   });
 
-  resetSessionButton.addEventListener('click', (e) => {
+  document.getElementById('reset-session-button').addEventListener('click', (e) => {
     e.preventDefault();
     chrome.storage.local.remove("answeredQuestionHashes", () => {
-      if (chrome.runtime.lastError) {
-        console.error("Error resetting session:", chrome.runtime.lastError);
-        showContentToast("Error resetting session.", "error");
-      } else {
-        console.log("Session reset from overlay.");
-        showContentToast("Current page session has been reset.");
-      }
+      showContentToast(chrome.runtime.lastError ? "Error resetting session" : "Current page session has been reset.", chrome.runtime.lastError ? "error" : "success");
     });
-    triggerContainer.classList.remove('active'); // Hide menu after action
-  });
-  
-  // Set initial state and listen for changes
-  updateFullscreenButtonState();
-  updateAiButtonState(false); // Ensure AI button is in default state on load
-  document.addEventListener('fullscreenchange', () => {
-    const isFullscreen = !!document.fullscreenElement;
-    // Persist the state for future page loads
-    chrome.storage.local.set({ 'fullscreen-enabled': isFullscreen });
-    // Update the button UI
-    updateFullscreenButtonState();
+    triggerContainer.classList.remove('active');
   });
 
-  // Add listener to close menu when clicking outside
+  document.getElementById('chat-overlay-button').addEventListener('click', (e) => {
+    e.preventDefault();
+    const chatOverlay = document.getElementById('ai-chat-overlay-container');
+    if (chatOverlay) chatOverlay.style.display = 'flex';
+    triggerContainer.classList.remove('active');
+  });
+
+  updateFullscreenButtonState();
+  updateAiButtonState(false);
+  document.addEventListener('fullscreenchange', updateFullscreenButtonState);
   document.addEventListener('click', (e) => {
-    // If the click is outside the trigger container and the container is active
     if (!triggerContainer.contains(e.target) && triggerContainer.classList.contains('active')) {
       triggerContainer.classList.remove('active');
     }
   });
+  createChatOverlay(); // Create the chat window, but keep it hidden
+}
+
+function createChatOverlay() {
+  if (document.getElementById('ai-chat-overlay-container')) return;
+
+  const chatContainer = document.createElement('div');
+  chatContainer.id = 'ai-chat-overlay-container';
+  chatContainer.style.display = 'none'; // Initially hidden
+  chatContainer.innerHTML = `
+    <div id="ai-chat-window">
+      <div id="ai-chat-header">
+        <h3>AI Chat</h3>
+        <button id="ai-chat-close-button">&times;</button>
+      </div>
+      <div id="ai-chat-messages"></div>
+      <form id="ai-chat-form">
+        <input type="text" id="ai-chat-input" placeholder="Ask the AI..." autocomplete="off">
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  `;
+
+  const style = document.createElement('style');
+  style.textContent = `
+    #ai-chat-overlay-container {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 2147483646; display: flex; align-items: center; justify-content: center;
+    }
+    #ai-chat-window {
+      width: 90%; max-width: 500px; height: 70%; max-height: 600px;
+      background: #0B0F14; color: #F2F4F6; border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      display: flex; flex-direction: column;
+    }
+    #ai-chat-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 15px 20px; border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    #ai-chat-close-button {
+      background: none; border: none; font-size: 24px; color: #F2F4F6; cursor: pointer;
+    }
+    #ai-chat-messages { flex-grow: 1; overflow-y: auto; padding: 20px; }
+    .chat-message-bubble {
+      max-width: 85%; padding: 10px 15px; border-radius: 15px;
+      margin-bottom: 12px; line-height: 1.5; word-wrap: break-word;
+    }
+    .user-message { background: #25D366; color: #04070D; margin-left: auto; border-bottom-right-radius: 4px; }
+    .bot-message { background: #11161C; color: #F2F4F6; margin-right: auto; border-bottom-left-radius: 4px; }
+    .bot-message.error { background: rgba(255,107,122,0.2); color: #ff6b7a; }
+    .loading-dots span { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #888; animation: wave 1.3s linear infinite; }
+    .loading-dots span:nth-of-type(2) { animation-delay: -1.1s; }
+    .loading-dots span:nth-of-type(3) { animation-delay: -0.9s; }
+    @keyframes wave { 0%, 60%, 100% { transform: initial; } 30% { transform: translateY(-8px); } }
+    #ai-chat-form { display: flex; gap: 10px; padding: 15px 20px; border-top: 1px solid rgba(255,255,255,0.1); }
+    #ai-chat-input { flex-grow: 1; background: #11161C; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; color: #F2F4F6; }
+    #ai-chat-form button { background: #25D366; color: #04070D; border: none; border-radius: 8px; padding: 10px 15px; cursor: pointer; }
+  `;
+  
+  document.head.appendChild(style);
+  document.body.appendChild(chatContainer);
+
+  // --- Chat Logic ---
+  const chatWindow = document.getElementById('ai-chat-window');
+  const messagesContainer = document.getElementById('ai-chat-messages');
+  const chatForm = document.getElementById('ai-chat-form');
+  const input = document.getElementById('ai-chat-input');
+  
+  document.getElementById('ai-chat-close-button').addEventListener('click', () => chatContainer.style.display = 'none');
+  chatContainer.addEventListener('click', (e) => { if (e.target === chatContainer) chatContainer.style.display = 'none'; });
+
+  chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const messageText = input.value.trim();
+    if (!messageText) return;
+    
+    appendChatMessage(messageText, 'user');
+    input.value = '';
+    showChatLoadingIndicator();
+
+    chrome.runtime.sendMessage({ action: "callAiApi", prompt: messageText }, (response) => {
+      removeChatLoadingIndicator();
+      if (chrome.runtime.lastError || response.error) {
+        appendChatMessage(chrome.runtime.lastError?.message || response.error, 'bot', true);
+      } else {
+        appendChatMessage(response.answer, 'bot');
+      }
+    });
+  });
+
+  function appendChatMessage(text, sender, isError = false) {
+    const bubble = document.createElement('div');
+    bubble.className = `chat-message-bubble ${sender}-message`;
+    if (isError) bubble.classList.add('error');
+    bubble.textContent = text;
+    messagesContainer.appendChild(bubble);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }
+  
+  function showChatLoadingIndicator() {
+    const bubble = document.createElement('div');
+    bubble.id = 'chat-loading-indicator';
+    bubble.className = 'chat-message-bubble bot-message loading-dots';
+    bubble.innerHTML = '<span></span><span></span><span></span>';
+    messagesContainer.appendChild(bubble);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }
+
+  function removeChatLoadingIndicator() {
+    const indicator = document.getElementById('chat-loading-indicator');
+    if (indicator) indicator.remove();
+  }
 }
 
 /**
@@ -822,9 +832,7 @@ async function createTriggerOverlay() {
  */
 function handleFullscreen() {
   if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(err => {
-      console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-    });
+    document.documentElement.requestFullscreen().catch(err => console.error(`Error enabling full-screen: ${err.message}`));
   } else {
     document.exitFullscreen();
   }
