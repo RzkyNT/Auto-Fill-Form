@@ -7,6 +7,29 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let allHistoryEntries = [];
 
+  // --- New Time Ago Function ---
+  function timeAgo(timestamp) {
+    const now = new Date();
+    const secondsPast = Math.floor((now.getTime() - timestamp) / 1000);
+
+    if (secondsPast < 60) {
+      return `${secondsPast} sec ago`;
+    }
+    if (secondsPast < 3600) {
+      return `${Math.floor(secondsPast / 60)} min ago`;
+    }
+    if (secondsPast <= 86400) {
+      return `${Math.floor(secondsPast / 3600)} hours ago`;
+    }
+    const daysPast = Math.floor(secondsPast / 86400);
+    if (daysPast <= 7) {
+      return `${daysPast} days ago`;
+    }
+    
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
   // --- Theme Application ---
   function applyTheme(isDark) {
     htmlRoot.classList.toggle("light", !isDark);
@@ -14,21 +37,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- Event Listeners ---
 
-  // Handle Back button click
   backButton.addEventListener("click", () => {
     window.close();
   });
 
-  // Handle search input
   searchInput.addEventListener("input", (e) => {
     const searchTerm = e.target.value;
     renderHistory(allHistoryEntries, searchTerm);
   });
 
-  // Handle Clear All History button click
   clearHistoryButton.addEventListener("click", () => {
     const isLightTheme = htmlRoot.classList.contains('light');
-
     Swal.fire({
       title: 'Are you sure?',
       text: "This will permanently delete ALL your history. You won't be able to revert this!",
@@ -45,37 +64,32 @@ document.addEventListener("DOMContentLoaded", () => {
           allHistoryEntries = [];
           renderHistory(allHistoryEntries, searchInput.value);
           Swal.fire({
-            title: 'Deleted!',
-            text: 'All history has been deleted.',
-            icon: 'success',
-            background: isLightTheme ? '#ffffff' : '#0B0F14',
-            color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
+            title: 'Deleted!', text: 'All history has been deleted.', icon: 'success',
+            background: isLightTheme ? '#ffffff' : '#0B0F14', color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
           });
         });
       }
     });
   });
 
-  // Event delegation for hostname-specific actions (Delete and Export)
   historyContainer.addEventListener('click', (e) => {
     const target = e.target;
     if (target.classList.contains('delete-btn')) {
       const hostname = target.dataset.hostname;
-      if (hostname) handleDeleteHostname(hostname);
+      if (hostname) handleDeleteHostname(hostname, target);
     } else if (target.classList.contains('export-btn')) {
       const hostname = target.dataset.hostname;
-      if (hostname) handleExportHostname(hostname);
+      if (hostname) handleExportHostname(hostname, target);
     }
   });
 
-  // --- New Functions for Hostname Actions ---
+  // --- New Functions for Hostname Actions (with visual feedback) ---
 
-  const handleDeleteHostname = (hostname) => {
+  const handleDeleteHostname = (hostname, button) => {
     const isLightTheme = htmlRoot.classList.contains('light');
-
     Swal.fire({
       title: 'Are you sure?',
-      text: `This will permanently delete all history for ${hostname}. You won't be able to revert this!`,
+      text: `This will permanently delete all history for ${hostname}.`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#3085d6',
@@ -85,24 +99,18 @@ document.addEventListener("DOMContentLoaded", () => {
       color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
     }).then((result) => {
       if (result.isConfirmed) {
+        button.disabled = true;
+        button.textContent = 'Deleting...';
         chrome.storage.local.get('smartFillHistory', (res) => {
           const updatedHistory = (res.smartFillHistory || []).filter(item => {
-            try {
-              return new URL(item.formUrl).hostname !== hostname;
-            } catch {
-              // Keep items with invalid URLs if their hostname can't be determined
-              return true; 
-            }
+            try { return new URL(item.formUrl).hostname !== hostname; } catch { return true; }
           });
           chrome.storage.local.set({ smartFillHistory: updatedHistory }, () => {
-            allHistoryEntries = updatedHistory; // Update local copy
-            renderHistory(allHistoryEntries, searchInput.value); // Re-render with current search filter
+            allHistoryEntries = updatedHistory;
+            renderHistory(allHistoryEntries, searchInput.value);
             Swal.fire({
-              title: 'Deleted!',
-              text: `History for ${hostname} has been deleted.`,
-              icon: 'success',
-              background: isLightTheme ? '#ffffff' : '#0B0F14',
-              color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
+              title: 'Deleted!', text: `History for ${hostname} has been deleted.`, icon: 'success',
+              background: isLightTheme ? '#ffffff' : '#0B0F14', color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
             });
           });
         });
@@ -110,48 +118,48 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
-  const handleExportHostname = (hostname) => {
-    // Ensure XLSX is available
+  const handleExportHostname = (hostname, button) => {
     if (typeof XLSX === 'undefined') {
-        Swal.fire('Error', 'XLSX library not loaded. Please check your internet connection or manifest.', 'error');
-        console.error('XLSX library (SheetJS) is not loaded.');
-        return;
+      Swal.fire('Error', 'XLSX library not loaded.', 'error');
+      return;
     }
 
-    const dataToExport = allHistoryEntries.filter(item => {
-        try {
-            return new URL(item.formUrl).hostname === hostname;
-        } catch {
-            return false; // Exclude items with invalid URLs from export
-        }
-    }).map(item => ({ 
+    button.disabled = true;
+    button.textContent = 'Exporting...';
+
+    try {
+      const dataToExport = allHistoryEntries.filter(item => {
+        try { return new URL(item.formUrl).hostname === hostname; } catch { return false; }
+      }).map(item => ({ 
         Question: item.question || "N/A", 
         Choices: (item.choices && item.choices.length > 0) ? item.choices.join(', ') : '',
         Answer: item.answer || "N/A", 
         Status: item.status || "N/A",
         URL: item.formUrl || "N/A",
         Timestamp: new Date(item.timestamp).toLocaleString() || "N/A"
-    }));
+      }));
 
-    if (dataToExport.length > 0) {
+      if (dataToExport.length > 0) {
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "History_Data");
         XLSX.writeFile(workbook, `history_${hostname}.xlsx`);
-    } else {
+      } else {
         const isLightTheme = htmlRoot.classList.contains('light');
         Swal.fire({
-          title: 'No Data', 
-          text: `There is no history data to export for ${hostname}.`, 
-          icon: 'info',
-          background: isLightTheme ? '#ffffff' : '#0B0F14',
-          color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
+          title: 'No Data', text: `No history to export for ${hostname}.`, icon: 'info',
+          background: isLightTheme ? '#ffffff' : '#0B0F14', color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
         });
+      }
+    } finally {
+      setTimeout(() => {
+        button.disabled = false;
+        button.textContent = 'Export XLSX';
+      }, 500);
     }
   };
 
-
-  // --- Original Functions ---
+  // --- Main Render Function (Modified) ---
 
   function renderHistory(history, filter = '') {
     if (!historyContainer) return;
@@ -181,7 +189,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!acc[hostname]) acc[hostname] = [];
         acc[hostname].push(entry);
       } catch (e) {
-        const invalidHost = "Other History"; // Group entries with invalid URLs
+        const invalidHost = "Other History";
         if (!acc[invalidHost]) acc[invalidHost] = [];
         acc[invalidHost].push(entry);
       }
@@ -192,11 +200,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const entries = groupedByHostname[hostname];
       const card = document.createElement('details');
       card.className = 'history-group-card';
-      card.open = true; // Keep all cards open when searching or initially loading
-
+      // card.open is now removed, so they are closed by default.
+      
       const summary = document.createElement('summary');
       summary.className = 'history-group-summary';
-      // Add hostname text and the new buttons
       summary.innerHTML = `
           <span class="hostname-text">${hostname} (${entries.length})</span>
           <span class="hostname-actions">
@@ -215,7 +222,6 @@ document.addEventListener("DOMContentLoaded", () => {
       entries.sort((a, b) => b.timestamp - a.timestamp).forEach(entry => {
         const row = document.createElement('tr');
         
-        // Question Cell (with choices)
         const qCell = document.createElement('td');
         const qText = document.createTextNode(entry.question || "N/A");
         qCell.appendChild(qText);
@@ -224,41 +230,29 @@ document.addEventListener("DOMContentLoaded", () => {
             const choicesContainer = document.createElement('div');
             choicesContainer.style.marginTop = '10px';
             choicesContainer.style.opacity = '0.8';
-
-            const choicesTitle = document.createElement('small');
-            const titleItalic = document.createElement('i');
-            titleItalic.textContent = 'Pilihan:';
-            choicesTitle.appendChild(titleItalic);
-            choicesContainer.appendChild(choicesTitle);
-
+            choicesContainer.innerHTML = `<small><i>Pilihan:</i></small>`;
             const choicesList = document.createElement('ol');
-            choicesList.style.margin = '5px 0 0 18px';
-            choicesList.style.padding = '0';
-
+            choicesList.style.cssText = 'margin: 5px 0 0 18px; padding: 0;';
             entry.choices.forEach(choiceText => {
                 const choiceItem = document.createElement('li');
                 choiceItem.textContent = choiceText;
                 choicesList.appendChild(choiceItem);
             });
-            
             choicesContainer.appendChild(choicesList);
             qCell.appendChild(choicesContainer);
         }
         row.appendChild(qCell);
 
-        // Answer Cell
         const aCell = document.createElement('td');
         aCell.textContent = entry.answer || "N/A";
         row.appendChild(aCell);
 
-        // Status Cell
         const sCell = document.createElement('td');
         sCell.textContent = entry.status;
         row.appendChild(sCell);
 
-        // Timestamp Cell
         const tCell = document.createElement('td');
-        tCell.textContent = new Date(entry.timestamp).toLocaleString();
+        tCell.textContent = timeAgo(entry.timestamp); // Using the new timeAgo function
         row.appendChild(tCell);
 
         tbody.appendChild(row);
@@ -273,11 +267,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- Initial Load ---
   chrome.storage.local.get(["smartFillHistory", "themeMode"], (result) => {
-    // Apply theme first
     const themeMode = result.themeMode || "light";
     applyTheme(themeMode === "dark");
-    
-    // Then render history
     allHistoryEntries = result.smartFillHistory || [];
     renderHistory(allHistoryEntries);
   });
