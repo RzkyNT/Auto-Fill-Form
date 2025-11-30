@@ -337,9 +337,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     profileCreationState = {
       tabId: request.tabId,
       hostname: request.hostname,
-      step: 'question',
+      step: 'questionContainer',
     };
-    chrome.tabs.sendMessage(request.tabId, { action: 'startSelection', options: { type: 'question', multi: false } });
+    chrome.tabs.sendMessage(request.tabId, { action: 'startSelection', options: { type: 'questionContainer', multi: false } });
     return true;
   }
 
@@ -350,13 +350,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       console.error("Background: Received elementSelected from wrong tab.");
       return;
     }
-    if (step === 'question' && request.selector) {
-      profileCreationState.questionSelector = request.selector;
+    if (step === 'questionContainer' && request.selector) {
+      profileCreationState.questionListContainerSelector = request.selector;
+      profileCreationState.step = 'questionBlock';
+      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: { type: 'questionBlock', multi: false } });
+    } else if (step === 'questionBlock' && request.selector) {
+      profileCreationState.exampleQuestionBlockSelector = request.selector;
+      profileCreationState.step = 'questionText';
+      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: { type: 'questionText', multi: false, relativeTo: profileCreationState.exampleQuestionBlockSelector } });
+    } else if (step === 'questionText' && request.relativeSelector) {
+      profileCreationState.questionTextRelativeSelector = request.relativeSelector;
       profileCreationState.step = 'answers';
-      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: { type: 'answer', multi: true } });
-    } else if (step === 'answers' && request.selectors) {
-      const { hostname, questionSelector } = profileCreationState;
-      const newProfile = { question: questionSelector, answers: request.selectors };
+      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: { type: 'answer', multi: true, relativeTo: profileCreationState.exampleQuestionBlockSelector } });
+    } else if (step === 'answers' && request.relativeSelectors) {
+      const {
+        hostname,
+        questionListContainerSelector,
+        exampleQuestionBlockSelector,
+        questionTextRelativeSelector,
+      } = profileCreationState;
+      const newProfile = {
+        questionListContainer: questionListContainerSelector,
+        questionBlock: exampleQuestionBlockSelector,
+        questionText: questionTextRelativeSelector,
+        answers: request.relativeSelectors
+      };
       chrome.storage.local.get({ customProfiles: {} }, (result) => {
         const profiles = result.customProfiles;
         profiles[hostname] = newProfile;

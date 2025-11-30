@@ -849,8 +849,6 @@ function handleFullscreen() {
   }
 }
 
-
-
 /**
  * Fills forms intelligently using Gemini AI.
  */
@@ -1043,17 +1041,12 @@ async function processCurrentQuizState(profile) {
 }
 
 async function handleCustomProfile(profile) {
-  clearKahootRecommendation(); // Just in case
+  clearKahootRecommendation();
 
-  // We need to check if the initial question element is present to set up the observer target.
-  // If it's not present, we cannot proceed with this profile.
-  const initialQuestionElement = document.querySelector(profile.question);
-  if (!initialQuestionElement) {
-    throw new Error("Initial question element not found. Profile may be invalid or page not ready.");
+  const questionListContainer = document.querySelector(profile.questionListContainer);
+  if (!questionListContainer) {
+    throw new Error("Question list container element not found. Profile may be invalid or page not ready.");
   }
-
-  // Find a suitable element to observe.
-  const targetNode = initialQuestionElement.parentElement || document.body; // Fallback to body if parent is null
 
   ensureSmartFillSession();
   const showOverlay = await getOverlayPreference();
@@ -1063,56 +1056,98 @@ async function handleCustomProfile(profile) {
     removeProgressOverlay();
   }
 
-  // Create a promise that resolves when stopRequested is true
-  const stopPromise = new Promise(resolve => {
-    smartFillSession.stopSignalResolver = resolve;
-  });
+  const allQuestions = questionListContainer.querySelectorAll(profile.questionBlock);
+  smartFillSession.totalSteps = allQuestions.length;
+  console.log(`Found ${allQuestions.length} questions using custom profile.`);
 
-  const mutationCallback = (mutationsList, observer) => {
-    // Check if smart fill was stopped by user or an error occurred
+  for (let i = 0; i < allQuestions.length; i++) {
     if (smartFillSession?.stopRequested) {
-      observer.disconnect();
-      quizContentObserver = null;
-      removeProgressOverlay(); // Also remove overlay on stop
-      if (smartFillSession.stopSignalResolver) {
-        smartFillSession.stopSignalResolver();
-        smartFillSession.stopSignalResolver = null;
-      }
+      console.log("Smart fill stopped by user during question iteration.");
+      break;
+    }
+    const questionElement = allQuestions[i];
+    await processSingleCustomProfileQuestion(questionElement, profile, i + 1, allQuestions.length);
+    // Add a small delay to avoid overwhelming the page or the AI
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  removeProgressOverlay();
+  updateAiButtonState(false);
+  console.log("Custom profile smart fill process completed.");
+}
+
+// New function to process a single question based on the custom profile
+async function processSingleCustomProfileQuestion(questionBlockElement, profile, index, total) {
+  try {
+    const questionTextElement = questionBlockElement.querySelector(profile.questionText);
+    if (!questionTextElement) {
+      console.warn(`Could not find question text within block for question ${index}. Skipping.`);
       return;
     }
-    // Debounce the processing of the quiz state to avoid excessive calls
-    debounce(() => processCurrentQuizState(profile), 500);
-  };
+    const questionText = (questionTextElement.textContent || '').trim();
 
-  // Disconnect any existing observer before creating a new one
-  if (quizContentObserver) {
-    quizContentObserver.disconnect();
+    if (!questionText) {
+      console.warn(`Question text is empty for question ${index}. Skipping.`);
+      return;
+    }
+
+    const questionHash = btoa(encodeURIComponent(questionText));
+    const answeredHashes = await getAnsweredQuestionHashes();
+    if (answeredHashes.includes(questionHash)) {
+      console.log(`Question ${index} already answered. Skipping.`);
+      return;
+    }
+
+    startHistoryEntry(questionText);
+    console.log(`--- Processing Question ${index}/${total}: "${questionText}"`);
+    updateProgressOverlay(`Reading question ${index}/${total}`, questionText);
+
+    const options = [];
+    for (const answerRelativeSelector of profile.answers) {
+      const optionElement = questionBlockElement.querySelector(answerRelativeSelector);
+      if (optionElement) {
+        options.push({ element: optionElement, label: (optionElement.textContent || '').trim() });
+      }
+    }
+
+    if (options.length === 0) {
+      console.warn(`No answer options found for question ${index}. Skipping.`);
+      finalizeHistoryEntry("no options", smartFillSession?.currentEntry?.answer || "");
+      return;
+    }
+
+    if (smartFillSession?.currentEntry) {
+      smartFillSession.currentEntry.choices = options.map(opt => opt.label);
+    }
+    
+    const prompt = `Question: "${questionText}"\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
+    console.log("Sending Prompt to Background:", prompt);
+    updateProgressOverlay("Consulting AI provider...", questionText);
+
+    const aiAnswer = await getAiResponse(prompt);
+    console.log("AI Answer received:", aiAnswer);
+    console.log("Comparing against options:", options.map(o => o.label));
+    updateProgressOverlay("Matching AI response...", aiAnswer);
+
+    const target = matchOption(options, aiAnswer);
+
+    if (target) {
+        target.element.click();
+        finalizeHistoryEntry("answered (custom)", target.label);
+        await addAnsweredQuestionHash(questionHash);
+    } else {
+        finalizeHistoryEntry("no match (custom)", aiAnswer);
+    }
+    smartFillSession.completedSteps = index;
+    updateProgressBar(index / Math.max(1, total));
+
+  } catch (error) {
+    console.error(`Error processing custom profile question ${index}:`, error);
+    updateProgressOverlay("Error", error.message);
+    finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
+    showToast('error', `An error occurred: ${error.message}`, 5000);
+    if (smartFillSession) smartFillSession.stopRequested = true;
   }
-
-  // Create and start the MutationObserver
-  quizContentObserver = new MutationObserver(mutationCallback);
-  quizContentObserver.observe(targetNode, {
-    childList: true, // Observe direct children additions/removals
-    subtree: true,   // Observe all descendants
-    attributes: true, // Observe attribute changes (e.g., class, id)
-    characterData: true, // Observe changes to text content
-  });
-  console.log("MutationObserver started on:", targetNode);
-
-  // Initial processing of the current quiz state (with hashing)
-  await processCurrentQuizState(profile);
-
-  // Wait until a stop is requested (e.g., by the stop button or an internal error)
-  await stopPromise;
-
-  // Cleanup after stopPromise resolves
-  if (quizContentObserver) {
-    quizContentObserver.disconnect();
-    quizContentObserver = null;
-    console.log("MutationObserver disconnected.");
-  }
-  removeProgressOverlay(); // Ensure overlay is removed
-  updateAiButtonState(false); // Reset button state
 }
 
 
@@ -1652,9 +1687,21 @@ function enterElementSelectionMode(options) {
   overlay.style.fontFamily = 'sans-serif';
   overlay.style.pointerEvents = 'none';
 
-  const instructions = isMulti
-    ? `Click on each <strong>${type}</strong> element. Press 'Enter' when finished.`
-    : `Click to select the <strong>${type}</strong> element.`;
+  let instructions;
+  if (type === 'questionContainer') {
+    instructions = `Click to select the <strong>main container</strong> that holds ALL questions.`;
+  } else if (type === 'questionBlock') {
+    instructions = `Click to select the **ENTIRE container** of ONE question, including its text AND all its answer options.`;
+  } else if (type === 'questionText') {
+    instructions = `Click to select the <strong>question TEXT</strong> within the selected question block.`;
+  } else if (type === 'answer') {
+    instructions = `Click on each <strong>answer option</strong> within the selected question block. Press 'Enter' when finished.`;
+  } else {
+    // Fallback for other types or default
+    instructions = isMulti
+      ? `Click on each <strong>${type}</strong> element. Press 'Enter' when finished.`
+      : `Click to select the <strong>${type}</strong> element.`;
+  }
 
   overlay.innerHTML = `
     <div style="background: black; padding: 15px 25px; border-radius: 10px; pointer-events: auto; border: 1px solid #333;">
@@ -1719,14 +1766,30 @@ function enterElementSelectionMode(options) {
       lastHighlightedElement = null; // Prevent mouseout from clearing the blue highlight
     } else {
       // Single selection mode
-      const selector = generateSelector(clickedEl);
+      let selectorToSend;
+      if (options.relativeTo) {
+        const rootSelector = options.relativeTo;
+        const rootElement = document.querySelector(rootSelector);
+        console.log("DEBUG: Relative selection - rootSelector:", rootSelector);
+        console.log("DEBUG: Relative selection - rootElement found:", !!rootElement, rootElement);
+        console.log("DEBUG: Relative selection - clickedEl:", clickedEl);
+        if (!rootElement) {
+            console.error("DEBUG: Relative selection ERROR: rootElement is null for selector:", rootSelector);
+        }
+        selectorToSend = {
+          relativeSelector: generateRelativeSelector(clickedEl, rootElement),
+        };
+        console.log("DEBUG: Relative selection - generated relativeSelector:", selectorToSend.relativeSelector);
+      } else {
+        selectorToSend = { selector: generateSelector(clickedEl) };
+      }
+
       if (lastHighlightedElement) lastHighlightedElement.style.outline = '';
       clickedEl.style.outline = '3px solid #28a745'; // Success green
 
       setTimeout(() => {
         cleanup();
-        // Send the result back to the background script
-        chrome.runtime.sendMessage({ action: 'elementSelected', selector: selector });
+        chrome.runtime.sendMessage({ action: 'elementSelected', ...selectorToSend });
       }, 300);
     }
   };
@@ -1740,13 +1803,18 @@ function enterElementSelectionMode(options) {
     }
     if (isMulti && e.key === 'Enter') {
       if (selectedElements.length > 0) {
-        const selectors = selectedElements.map(generateSelector);
+        let selectorsToSend;
+        if (options.relativeTo) {
+          const rootElement = document.querySelector(options.relativeTo);
+          const relativeSelectors = selectedElements.map(el => generateRelativeSelector(el, rootElement));
+          selectorsToSend = { relativeSelectors: relativeSelectors };
+        } else {
+          selectorsToSend = { selectors: selectedElements.map(generateSelector) };
+        }
         cleanup();
-        // Send the result back to the background script
-        chrome.runtime.sendMessage({ action: 'elementSelected', selectors: selectors });
+        chrome.runtime.sendMessage({ action: 'elementSelected', ...selectorsToSend });
       } else {
         cleanup();
-        // Optionally, notify of no selection
         chrome.runtime.sendMessage({ action: 'selectionCancelled', reason: 'No elements selected.' });
       }
     }
@@ -1761,6 +1829,43 @@ function enterElementSelectionMode(options) {
 function escapeCssSelector(str) {
   // Escape common CSS selector special characters, especially ':' for Tailwind CSS
   return str.replace(/([.:])/g, '\\$1');
+}
+
+function generateRelativeSelector(el, rootElement) {
+    console.log("DEBUG: generateRelativeSelector called with el:", el, "rootElement:", rootElement);
+    if (!el) { console.log("DEBUG: generateRelativeSelector returning null because el is null."); return null; }
+    if (!rootElement) { console.log("DEBUG: generateRelativeSelector returning null because rootElement is null."); return null; }
+    if (!rootElement.contains(el)) { 
+        console.log("DEBUG: generateRelativeSelector returning null because rootElement does not contain el.");
+        showContentToast("Error: The selected element is not contained within the previously selected block. Please try again, ensuring your selections are hierarchical.", "error");
+        return null;
+    }
+    if (el === rootElement) { console.log("DEBUG: generateRelativeSelector returning :scope."); return ':scope'; }
+
+    const parts = [];
+    let currentEl = el;
+    while (currentEl && currentEl !== rootElement) {
+        let part = currentEl.tagName.toLowerCase();
+        
+        const classes = Array.from(currentEl.classList);
+        if (classes.length > 0) {
+            part += '.' + classes.map(cls => escapeCssSelector(cls)).join('.');
+        }
+
+        let sibling = currentEl;
+        let nth = 1;
+        while (sibling = sibling.previousElementSibling) {
+            if (sibling.tagName === currentEl.tagName) {
+                nth++;
+            }
+        }
+        part += `:nth-of-type(${nth})`;
+
+        parts.unshift(part);
+        currentEl = currentEl.parentElement;
+    }
+    console.log("DEBUG: generateRelativeSelector returning:", parts.join(' > '));
+    return parts.join(' > ');
 }
 
 function generateSelector(el) {
@@ -1789,14 +1894,7 @@ function generateSelector(el) {
         // Removed for better compatibility with dynamic content where positions change.
         // If the selector is not unique enough, the user might need to adjust their selection.
         // The current strategy relies more on classes and tag names.
-        let sibling = currentEl;
-        let nth = 1;
-        while (sibling = sibling.previousElementSibling) {
-            if (sibling.tagName === currentEl.tagName) {
-                nth++;
-            }
-        }
-        part += `:nth-of-type(${nth})`;
+
 
 
         parts.unshift(part);
