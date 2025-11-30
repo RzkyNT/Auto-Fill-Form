@@ -47,7 +47,7 @@ function injectSweetAlert2() {
 
   const jsScript = document.createElement('script');
   jsScript.id = 'sweetalert2-script';
-  jsScript.src = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2@11.js');
+  jsScript.src = chrome.runtime.getURL('vendor/sweetalert2/sweetalert2.min.js');
   jsScript.async = true;
   document.head.appendChild(jsScript);
 }
@@ -67,7 +67,7 @@ function showToast(icon, title, timer = 3000) {
     timer: timer,
     timerProgressBar: true,
     icon: icon,
-    title: title,
+    text: title, // Changed from title: title to text: title
     background: isLightTheme ? '#ffffff' : '#0B0F14',
     color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
   });
@@ -785,7 +785,7 @@ function createChatOverlay() {
     input.value = '';
     showChatLoadingIndicator();
 
-    chrome.runtime.sendMessage({ action: "callAiApi", prompt: messageText, context: 'chat' }, (response) => {
+    chrome.runtime.sendMessage({ action: "callChatApi", prompt: messageText }, (response) => {
       removeChatLoadingIndicator();
       const text = chrome.runtime.lastError?.message || response.error || response.answer;
       const isError = !!(chrome.runtime.lastError || response.error);

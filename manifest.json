@@ -25,7 +25,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["vendor/sweetalert2/sweetalert2.min.css", "vendor/sweetalert2/sweetalert2@11.js"],
+      "resources": ["vendor/sweetalert2/sweetalert2.min.css", "vendor/sweetalert2/sweetalert2.min.js"],
       "matches": ["<all_urls>"]
     }
   ]

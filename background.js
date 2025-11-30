@@ -1,4 +1,7 @@
 // background.js
+const smartFillInstruction = "\n\nRespond ONLY with the correct option.";
+const chatSystemInstruction = `You are a helpful and friendly assistant designed for general conversation. Provide clear, concise, and helpful answers.`;
+
 chrome.runtime.onInstalled.addListener(function(details) {
   if (details.reason === 'install') {
     chrome.tabs.create({ url: 'https://rizqiahsansetiawan.ct.ws/ext/welcome.html' });
@@ -105,6 +108,7 @@ function extractOpenAiText(res) {
 // callGemini now expects the final, prepared prompt in request.prompt
 async function callGemini(request, sendResponse) {
   console.log("--- [DEBUG] callGemini: START ---");
+  console.log(`--- [DEBUG] callGemini: Processing request for ${request.chatContext ? "Chat AI" : "Smart Fill AI"} ---`);
   const { apiKeys } = await new Promise(resolve => chrome.storage.local.get({ apiKeys: [] }, resolve));
 
   if (!apiKeys || apiKeys.length === 0) {
@@ -138,6 +142,7 @@ async function callGemini(request, sendResponse) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [
+            ...(request.chatContext ? [{ role: "system", parts: [{ text: chatSystemInstruction }] }] : []),
             {
               role: "user",
               parts: [{ text: request.prompt }] // Use request.prompt directly
@@ -161,6 +166,7 @@ async function callGemini(request, sendResponse) {
       if (!response.ok) {
         const errorMessage = data.error?.message || `HTTP error! status: ${response.status}`;
         console.warn(`--- [DEBUG] callGemini: API Error for key ...${activeKey.slice(-4)}. Status: ${response.status}.`, data);
+        console.log("--- [DEBUG] Gemini API Error details:", data);
         console.log("--- [DEBUG] callGemini: Trying next key...");
         setApiKeyCooldown(activeKey, 60);
         lastError = errorMessage;
@@ -195,37 +201,54 @@ async function callGemini(request, sendResponse) {
 // callOpenAi now expects the final, prepared prompt in request.prompt
 async function callOpenAi(request, sendResponse, config) {
   console.log("--- [DEBUG] callOpenAi: START ---");
+  console.log(`--- [DEBUG] callOpenAi: Processing request for ${request.chatContext ? "Chat AI" : "Smart Fill AI"} ---`);
+  console.log("--- [DEBUG] callOpenAi received config:", config);
 
   const { baseUrl, endpoint, model, token } = config || {};
+  console.log("--- [DEBUG] Extracted baseUrl:", baseUrl, "endpoint:", endpoint);
   if (!baseUrl || !endpoint || !model || !token) {
     sendResponse({ error: "OpenAI configuration is incomplete. Please set base URL, endpoint, model, and bearer token." });
     return;
   }
 
-  const url = normalizeOpenAiUrl(baseUrl, endpoint);
-  const body = { 
-    model,
-    ...(request.chatContext && { temperature: 0.7 }), // Conditionally apply temperature for chat
-  };
+  const url = normalizeOpenAiUrl(baseUrl, endpoint); // <<< MISSING LINE RE-ADDED >>>
+  console.log("--- [DEBUG] Constructed URL:", url);
+
+  const body = {
+  model,
+  // hanya kirim temperature jika model mendukungnya
+  ...(request.chatContext && !model.includes("nano") && { temperature: 0.7 }),
+};
+
   
-  // Construct messages array based on chatContext
-  if (request.chatContext) {
-    body.messages = [
-      { role: "system", content: chatSystemInstruction }, // Use system role for OpenAI
-      { role: "user", content: request.prompt }, // User's message directly
-    ];
-  } else if (endpoint.toLowerCase().includes("responses")) {
-    body.input = request.prompt; // For specific legacy endpoint (e.g., gpt-3.5-turbo-instruct)
+  const isChatCompletionsEndpoint = endpoint.toLowerCase().includes("/chat/completions");
+
+  if (isChatCompletionsEndpoint) {
+    if (request.chatContext) {
+      // For chat context with Chat Completions API
+      body.messages = [
+        { role: "system", content: chatSystemInstruction },
+        { role: "user", content: request.prompt },
+      ];
+    } else {
+      // For non-chat context (Smart Fill) with Chat Completions API
+      body.messages = [
+        { role: "user", content: request.prompt },
+      ];
+    }
   } else {
-    body.messages = [
-      {
-        role: "user",
-        content: request.prompt,
-      },
-    ];
+    // For non-Chat Completions API (Completions API, often uses 'input')
+    if (request.chatContext) {
+      // For chat context with Completions API, combine system instruction and prompt into 'input'
+      body.input = `${chatSystemInstruction}\n\nUser: ${request.prompt}`;
+    } else {
+      // For non-chat context (Smart Fill) with Completions API
+      body.input = request.prompt;
+    }
   }
 
-  try {
+    console.log("--- [DEBUG] OpenAI Request Body:", body); // Correctly placed debug log
+    try {
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -278,9 +301,6 @@ let profileCreationState = {};
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Instructions for different contexts
-  const smartFillInstruction = "\n\nRespond ONLY with the correct option.";
-  const chatSystemInstruction = `You are a helpful and friendly assistant designed for general conversation. Provide clear, concise, and helpful answers.`;
-
   if (request.action === "callAiApi") { // For Smart Fill
     console.log("--- Background: Received request to call AI API for Smart Fill ---");
     const finalPrompt = request.prompt + smartFillInstruction;

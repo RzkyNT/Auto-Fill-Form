@@ -1,0 +1,54 @@
+background.js:12 Background service worker started.
+background.js:312 --- Background: Received request to call Chat API ---
+background.js:203 --- [DEBUG] callOpenAi: START ---
+background.js:204 --- [DEBUG] callOpenAi: Processing request for Chat AI ---
+background.js:205 --- [DEBUG] callOpenAi received config: {baseUrl: 'https://kotproxy.lewds.dev/openai/v1/', endpoint: 'https://kotproxy.lewds.dev/openai/v1/responses', model: 'gpt-5-nano', token: 'AGzu1Ic56oatRdvFuXagJcZVl7KqQMeM9grhiMR5uDw'}
+background.js:208 --- [DEBUG] Extracted baseUrl: https://kotproxy.lewds.dev/openai/v1/ endpoint: https://kotproxy.lewds.dev/openai/v1/responses
+background.js:247 --- [DEBUG] OpenAI Request Body: {model: 'gpt-5-nano', input: 'You are a helpful and friendly assistant designed …ear, concise, and helpful answers.\n\nUser: halo ai'}
+background.js:292 --- [DEBUG] callOpenAi: Network/fetch error ReferenceError: url is not defined
+    at callOpenAi (background.js:249:34)
+    at callAiApiInternal (background.js:325:7)
+    at background.js:317:7
+callOpenAi @ background.js:292
+callAiApiInternal @ background.js:325
+(anonymous) @ background.js:317
+
+content.js:15 HOST https://app.guidemaker.com
+content.js:15 initting trpc client {url: {…}}
+En @ content.js:15
+(anonymous) @ content.js:15
+(anonymous) @ content.js:15
+content.js:15 client Proxy(Function) {length: 0, name: 'ar'}
+content.js:15 [GUIDEMAKER] Content script loaded
+content.js:25 content.js: sendToPopup - Sending message: {type: 'content:ready', payload: {…}}
+index.js:64478 Doc Filler is currently disabled
+content.js:860 doSmartFill function initiated in content script.
+content.js:862 --- Smart Fill Initialized ---
+content.js:1131 Found 41 question items.
+content.js:1146 
+--- Processing Question 1 ---
+content.js:1168 Question Text: "PILIHAN GANDA"
+content.js:1146 
+--- Processing Question 2 ---
+content.js:1168 Question Text: "Tujuan utama dari kegiatan promosi adalah … *"
+content.js:1199 Detected Choices: (5) ['A. Menambah jumlah karyawan', 'B. Menurunkan harga produk', 'C. Mengenalkan dan menarik minat konsumen terhadap produk', 'D. Mengurangi produksi barang', 'E. Meningkatkan biaya pemasaranr']
+content.js:1201 Sending Prompt to Background: Question: "Tujuan utama dari kegiatan promosi adalah … *"
+Options: [A. Menambah jumlah karyawan, B. Menurunkan harga produk, C. Mengenalkan dan menarik minat konsumen terhadap produk, D. Mengurangi produksi barang, E. Meningkatkan biaya pemasaranr]
+
+From the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.
+content.js:928 Error during Smart Fill: Error: url is not defined
+    at content.js:213:23
+doSmartFill @ content.js:928
+await in doSmartFill
+document.getElementById.addEventListener.capture @ content.js:683
+content.js:58 SweetAlert2 not loaded, falling back to alert: An error occurred while using the AI provider: url is not defined
+showToast @ content.js:58
+doSmartFill @ content.js:931
+await in doSmartFill
+document.getElementById.addEventListener.capture @ content.js:683
+content.js:59 SweetAlert2 not loaded. Message: An error occurred while using the AI provider: url is not defined
+showToast @ content.js:59
+doSmartFill @ content.js:931
+await in doSmartFill
+document.getElementById.addEventListener.capture @ content.js:683
+content.js:933 --- Smart Fill Completed ---
