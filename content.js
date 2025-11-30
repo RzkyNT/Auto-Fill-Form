@@ -501,6 +501,66 @@ const fullscreenEnterIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24"
 const fullscreenExitIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M280-200v-280h80v200h200v80H280Zm400-320v-200H480v-80h280v280h-80Z"/></svg>`;
 const runAiIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>`;
 const cancelAiIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>`;
+const resetSessionIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/></svg>`;
+
+/**
+ * Shows a simple toast notification on the page.
+ * @param {string} message The message to display.
+ * @param {('success'|'error')} type The type of toast, for styling.
+ */
+function showContentToast(message, type = 'success') {
+  const toastId = 'smart-fill-content-toast';
+  // Remove existing toast if any
+  const existingToast = document.getElementById(toastId);
+  if (existingToast) {
+    existingToast.remove();
+  }
+
+  const toast = document.createElement('div');
+  toast.id = toastId;
+  toast.textContent = message;
+  
+  // Basic styling
+  toast.style.position = 'fixed';
+  toast.style.bottom = '20px';
+  toast.style.left = '50%';
+  toast.style.transform = 'translateX(-50%)';
+  toast.style.padding = '12px 20px';
+  toast.style.borderRadius = '8px';
+  toast.style.color = 'white';
+  toast.style.zIndex = '2147483647';
+  toast.style.fontFamily = '"Segoe UI", sans-serif';
+  toast.style.fontSize = '14px';
+  toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+  toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+  toast.style.opacity = '0';
+  toast.style.transform = 'translate(-50%, 10px)';
+
+  if (type === 'error') {
+    toast.style.backgroundColor = '#d32f2f';
+  } else {
+    toast.style.backgroundColor = '#25D366';
+  }
+
+  document.body.appendChild(toast);
+
+  // Animate in
+  setTimeout(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%)';
+  }, 10);
+
+  // Animate out and remove
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translate(-50%, 10px)';
+    setTimeout(() => {
+      if (toast.parentElement) {
+        toast.parentElement.removeChild(toast);
+      }
+    }, 300);
+  }, 3000);
+}
 
 
 /**
@@ -520,6 +580,7 @@ function updateFullscreenButtonState() {
     fullscreenButton.title = 'Enter Fullscreen';
   }
 }
+
 
 /**
  * Updates the AI button's icon and style based on the processing state.
@@ -579,6 +640,9 @@ async function createTriggerOverlay() {
             </a>
             <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">
                 ${fullscreenEnterIcon}
+            </a>
+            <a href="#" id="reset-session-button" class="social-icon" title="Reset Session">
+                ${resetSessionIcon}
             </a>
         </div>
     </div>
@@ -698,6 +762,7 @@ async function createTriggerOverlay() {
     #fullscreen-button.active:hover {
       background-color: #4fc3f7;
     }
+    #reset-session-button:hover { background: #ffecb3; }
 
     /* Responsive Design for Mobile */
     @media (max-width: 768px) {
@@ -743,6 +808,7 @@ async function createTriggerOverlay() {
   const mainButton = document.getElementById('smart-fill-trigger-button');
   const runAiButton = document.getElementById('run-ai-button');
   const fullscreenButton = document.getElementById('fullscreen-button');
+  const resetSessionButton = document.getElementById('reset-session-button');
 
   // Toggle tooltip visibility on click of the main button
   mainButton.addEventListener('click', (e) => {
@@ -771,6 +837,20 @@ async function createTriggerOverlay() {
   fullscreenButton.addEventListener('click', (e) => {
     e.preventDefault();
     handleFullscreen();
+    triggerContainer.classList.remove('active'); // Hide tooltip after action
+  });
+
+  resetSessionButton.addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.storage.local.remove("answeredQuestionHashes", () => {
+      if (chrome.runtime.lastError) {
+        console.error("Error resetting session:", chrome.runtime.lastError);
+        showContentToast("Error resetting session.", "error");
+      } else {
+        console.log("Session reset from overlay.");
+        showContentToast("Current page session has been reset.");
+      }
+    });
     triggerContainer.classList.remove('active'); // Hide tooltip after action
   });
   

@@ -30,11 +30,13 @@ const overlayToggle = document.getElementById("overlay-toggle");
 const htmlRoot = document.documentElement;
 const manageProfilesButton = document.getElementById("manage-profiles");
 const viewHistoryButton = document.getElementById("view-history");
+const resetSessionButton = document.getElementById("reset-session");
 
 // View Elements
 const mainView = document.getElementById('main-view');
 const profilesView = document.getElementById('profiles-view');
 const backToSettingsButton = document.getElementById('back-to-settings');
+
 
 // Profile Elements
 const profilesList = document.getElementById('profiles-list');
@@ -150,6 +152,31 @@ overlayToggle.addEventListener("change", () => {
 
 viewHistoryButton.addEventListener("click", () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('history.html') });
+});
+
+resetSessionButton.addEventListener("click", () => {
+  chrome.storage.local.remove("answeredQuestionHashes", () => {
+    if (chrome.runtime.lastError) {
+      console.error("Error resetting session:", chrome.runtime.lastError);
+      Swal.fire({
+        title: 'Error!',
+        text: 'Could not reset the session. Please check the console.',
+        icon: 'error',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+    } else {
+      Swal.fire({
+        title: 'Success!',
+        text: 'Current session has been reset. You can now re-answer questions on the page.',
+        icon: 'success',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      }).then(() => {
+        location.reload();
+      });
+    }
+  });
 });
 
 // Event Listeners for View Switching
