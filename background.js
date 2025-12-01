@@ -2,14 +2,102 @@
 const smartFillInstruction = "\n\nRespond ONLY with the correct option.";
 const chatSystemInstruction = `You are a helpful and friendly assistant designed for general conversation. Provide clear, concise, and helpful answers if user provide a question with several options just use the options as response with explaination.`;
 
+const ACTIVATION_SERVER_URL = "https://script.google.com/macros/s/AKfycbz90SNLOKlVVEszt3gKwi_x61iu_8NYXpKJ5ZC0LwPALNClNtaPdZj8UDQE3NjCnHTu/exec"; // Replace with your actual backend URL
+const BACKEND_PUBLIC_KEY = "SMK-TARUNA-BANGSA-EKSTENSI-RZKYNT-2025"; // Replace with a strong key for HMAC or public key for JWT
+
+// Key for storing the last activation response in local storage
+const LAST_ACTIVATION_RESPONSE_KEY = "lastActivationResponse";
+
 chrome.runtime.onInstalled.addListener(function(details) {
   if (details.reason === 'install') {
-    chrome.tabs.create({ url: 'https://rizqiahsansetiawan.ct.ws/ext/welcome.html' });
+    chrome.tabs.create({ url: 'https://rizqiahansetiawan.ct.ws/ext/welcome.html' });
   }
 });
 
 // This script handles smart fill requests to Gemini or OpenAI depending on user settings.
 console.log("Background service worker started.");
+
+// Function to generate a UUID (similar to v4)
+function generateUuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+async function getDeviceIdentifier() {
+  let { deviceIdentifier } = await chrome.storage.local.get("deviceIdentifier");
+  if (!deviceIdentifier) {
+    deviceIdentifier = generateUuid();
+    await chrome.storage.local.set({ deviceIdentifier: deviceIdentifier });
+  }
+  return deviceIdentifier;
+}
+
+// Ensure device ID exists on startup
+getDeviceIdentifier();
+
+async function verifyBackendSignature(data, signature, sharedSecret) {
+  const canonicalJsonStringify = (obj) => {
+    const sortedObj = Object.keys(obj)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = obj[key];
+        return acc;
+      }, {});
+    return JSON.stringify(sortedObj);
+  };
+
+  const canonicalDataString = canonicalJsonStringify(data);
+
+  console.log("DEBUG BG: verifyBackendSignature called.");
+  console.log(`DEBUG BG: Shared Secret used: "${sharedSecret}"`);
+  console.log(`DEBUG BG: Signature received: "${signature}"`);
+  console.log(`DEBUG BG: Canonical Data to sign: "${canonicalDataString}"`);
+
+  try {
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(sharedSecret);
+    const dataToSign = encoder.encode(canonicalDataString); // Use the canonical string
+
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      keyData,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign", "verify"]
+    );
+
+    if (!/^[0-9a-fA-F]+$/.test(signature)) {
+        console.error("DEBUG BG: Signature is not a valid hex string. Received: " + signature);
+        return false;
+    }
+
+    const hexToArrayBuffer = (hex) => {
+        const typedArray = new Uint8Array(hex.match(/[0-9a-f]{2}/gi).map(function (h) {
+            return parseInt(h, 16)
+        }));
+        return typedArray.buffer;
+    };
+
+    const verified = await crypto.subtle.verify(
+      "HMAC",
+      cryptoKey,
+      hexToArrayBuffer(signature),
+      dataToSign
+    );
+
+    if (verified) {
+      console.log("DEBUG BG: Backend signature successfully verified.");
+    } else {
+      console.warn("DEBUG BG: Backend signature verification FAILED.");
+    }
+    return verified;
+  } catch (error) {
+    console.error("DEBUG BG: Error during signature verification:", error);
+    return false;
+  }
+}
 
 function shuffle(array) {
   for (let i = array.length - 1; i > 0; i--) {
@@ -65,7 +153,7 @@ function normalizeOpenAiUrl(baseUrl, endpoint) {
     return trimmedEndpoint;
   }
 
-  const cleanBase = baseUrl?.trim().replace(/\/+$/, "");
+  const cleanBase = baseUrl?.trim().replace(/\/\/+$/, "");
   const cleanEndpoint = trimmedEndpoint.replace(/^\/+/, "");
   if (!cleanBase) return trimmedEndpoint;
 
@@ -299,26 +387,190 @@ async function callOpenAi(request, sendResponse, config) {
 
 let profileCreationState = {};
 
+async function verifyActivationWithBackend() {
+  console.log("BG: Verifying activation status with backend...");
+  const { activationKey, deviceIdentifier } = await chrome.storage.local.get(["activationKey", "deviceIdentifier"]);
+
+  if (!activationKey || !deviceIdentifier) {
+    console.log("BG: Verification failed: Missing activationKey or deviceIdentifier in local storage.");
+    return { isActive: false, licenseDetails: null };
+  }
+
+  try {
+    const response = await fetch(ACTIVATION_SERVER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'status',
+        activationKey: activationKey,
+        deviceIdentifier: deviceIdentifier,
+      }),
+      redirect: 'follow'
+    });
+
+    const responseData = await response.json();
+
+    if (response.ok && responseData.data?.status === 'success' && responseData.data?.isActive === true) {
+      const licenseDetails = responseData.data.licenseDetails || 'Full';
+      console.log(`BG: Verification successful. License: ${licenseDetails}`);
+      return { isActive: true, licenseDetails: licenseDetails };
+    } else {
+      const message = responseData.data?.message || 'Unknown status.';
+      console.log(`BG: Verification failed or user is inactive. Reason: ${message}`);
+      return { isActive: false, licenseDetails: null };
+    }
+  } catch (error) {
+    console.error("BG: Error during activation status check:", error);
+    return { isActive: false, licenseDetails: null }; // Network errors mean no activation
+  }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // --- Live Activation Check Workflow ---
+  if (request.action === 'checkActivation') {
+    (async () => {
+      const status = await verifyActivationWithBackend();
+      sendResponse(status);
+    })();
+    return true;
+  }
+
+  // --- Activation Workflow ---
+  if (request.action === 'activateExtension') {
+    (async () => {
+      const { activationKey } = request;
+      const deviceIdentifier = await getDeviceIdentifier();
+      console.log("BG: Menerima permintaan activateExtension.");
+
+      try {
+        const fetchOptions = {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            activationKey: activationKey,
+            deviceIdentifier: deviceIdentifier,
+          }),
+          redirect: 'follow'
+        };
+        
+        const response = await fetch(ACTIVATION_SERVER_URL, fetchOptions);
+        const responseText = await response.text();
+        let responseData = JSON.parse(responseText);
+        
+        if (!responseData.data || !responseData.signature) {
+            console.error("BG: Respons yang salah dari server: Data atau tanda tangan hilang.");
+            sendResponse({ success: false, message: "Respons server salah." });
+            return;
+        }
+
+        const isSignatureValid = await verifyBackendSignature(responseData.data, responseData.signature, BACKEND_PUBLIC_KEY);
+
+        if (!isSignatureValid) {
+            console.error("BG: Aktivasi gagal: Tanda tangan backend tidak valid.");
+            sendResponse({ success: false, message: "Invalid server response signature." });
+            return;
+        }
+
+        const successStatus = response.ok && responseData.data.status === 'success';
+        const message = responseData.data.message || (successStatus ? 'Extension activated successfully!' : 'Activation failed.');
+        const licenseDetails = responseData.data.licenseDetails || null;
+
+        const finalResponse = {
+          success: successStatus,
+          message: message,
+          licenseDetails: licenseDetails
+        };
+
+        if (successStatus) {
+          await chrome.storage.local.set({
+            activationKey: activationKey,
+            deviceIdentifier: deviceIdentifier
+          });
+          console.log(`BG: Aktivasi berhasil. Kunci disimpan. Lisensi: ${licenseDetails}`);
+        } else {
+          await chrome.storage.local.remove(["activationKey"]); // Clear key on failure
+          console.log(`BG: Aktivasi gagal: ${message}`);
+        }
+        await chrome.storage.local.set({ [LAST_ACTIVATION_RESPONSE_KEY]: finalResponse });
+        sendResponse(finalResponse);
+      } catch (error) {
+        const finalResponse = { success: false, message: `Network error: ${error.message}` };
+        await chrome.storage.local.remove(["activationKey"]);
+        await chrome.storage.local.set({ [LAST_ACTIVATION_RESPONSE_KEY]: finalResponse });
+        sendResponse(finalResponse);
+      }
+    })();
+    return true;
+  }
+  
+  // --- Deactivation Workflow ---
+  if (request.action === 'deactivateExtension') {
+    (async () => {
+      console.log("BG: Menerima permintaan deactivateExtension.");
+
+      const { deviceIdentifier, activationKey } = await chrome.storage.local.get(["deviceIdentifier", "activationKey"]);
+
+      if (!deviceIdentifier || !activationKey) {
+        console.error("BG: Deactivation failed: Missing deviceIdentifier or activationKey.");
+        await chrome.storage.local.remove(["activationKey", "licenseDetails"]);
+        return;
+      }
+
+      try {
+        await fetch(ACTIVATION_SERVER_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'deactivate',
+            activationKey: activationKey,
+            deviceIdentifier: deviceIdentifier,
+          }),
+          redirect: 'follow'
+        });
+        console.log("BG: Deactivation request sent to the server.");
+      } catch (error) {
+        console.error("BG: Error sending deactivation request to the server:", error);
+      } finally {
+        await chrome.storage.local.remove(["activationKey", "licenseDetails", LAST_ACTIVATION_RESPONSE_KEY]);
+        console.log("BG: Data aktivasi dihapus dari penyimpanan lokal.");
+      }
+    })();
+    return true;
+  }
+
   // Instructions for different contexts
   if (request.action === "callAiApi") { // For Smart Fill
-    console.log("--- Background: Received request to call AI API for Smart Fill ---");
-    const finalPrompt = request.prompt + smartFillInstruction;
-    chrome.storage.local.get({ aiProvider: "gemini", openAiConfig: {}, apiKeys: [] }, (storage) => {
-      // Pass chatContext: false for Smart Fill
+    (async () => {
+      const activationStatus = await verifyActivationWithBackend();
+      if (!activationStatus.isActive) {
+          console.warn("AI API call blocked: Extension not activated.");
+          sendResponse({ error: "Extension not activated. Please activate to use Smart Fill." });
+          return;
+      }
+      console.log("--- Background: Received request to call AI API for Smart Fill ---");
+      const finalPrompt = request.prompt + smartFillInstruction;
+      const storage = await chrome.storage.local.get({ aiProvider: "gemini", openAiConfig: {}, apiKeys: [] });
       callAiApiInternal({ ...request, prompt: finalPrompt, chatContext: false }, sendResponse, storage);
-    });
+    })();
     return true;
   }
   
   if (request.action === "callChatApi") { // For Chat AI
-    console.log("--- Background: Received request to call Chat API ---");
-    // For chat, we simply pass the original request.prompt. The system instruction
-    // will be used by callGemini/callOpenAi based on chatContext: true
-    chrome.storage.local.get({ aiProvider: "gemini", openAiConfig: {}, apiKeys: [] }, (storage) => {
-      // Pass chatContext: true for Chat AI
+    (async () => {
+      const activationStatus = await verifyActivationWithBackend();
+      if (!activationStatus.isActive) {
+          console.warn("Chat API call blocked: Extension not activated.");
+          sendResponse({ error: "Extension not activated. Please activate to use AI Chat." });
+          return;
+      }
+      console.log("--- Background: Received request to call Chat API ---");
+      const storage = await chrome.storage.local.get({ aiProvider: "gemini", openAiConfig: {}, apiKeys: [] });
       callAiApiInternal({ ...request, prompt: request.prompt, chatContext: true }, sendResponse, storage);
-    });
+    })();
     return true;
   }
 
@@ -333,16 +585,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // --- Profile Creation Workflow ---
   if (request.action === 'startProfileCreation') {
-    console.log('Background: Starting profile creation.', request);
-    profileCreationState = {
-      tabId: request.tabId,
-      hostname: request.hostname,
-      step: 'questionContainer',
-    };
-    chrome.tabs.sendMessage(request.tabId, { action: 'startSelection', options: { type: 'questionContainer', multi: false } });
+    (async () => {
+      const activationStatus = await verifyActivationWithBackend();
+      if (!activationStatus.isActive) {
+          console.warn("Profile creation blocked: Extension not activated.");
+          sendResponse({ success: false, message: "Extension not activated. Please activate to create profiles." });
+          return;
+      }
+      console.log('Background: Starting profile creation.', request);
+      profileCreationState = {
+        tabId: request.tabId,
+        hostname: request.hostname,
+        step: 'questionContainer',
+      };
+      chrome.tabs.sendMessage(request.tabId, { action: 'startSelection', options: { type: 'questionContainer', multi: false } });
+    })();
     return true;
   }
-
+  
   if (request.action === 'elementSelected') {
     console.log('Background: Received selected element.', request);
     const { tabId, step } = profileCreationState;

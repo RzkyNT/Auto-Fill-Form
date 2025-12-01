@@ -338,15 +338,10 @@
       color: var(--color-text);
     }
 
-    .switch .theme-icon #theme-icon-light {
+    .switch #theme-icon-light {
       opacity: 1;
       transform: scale(1);
     }
-    .switch .theme-icon #theme-icon-dark {
-      opacity: 0;
-      transform: scale(0.8);
-    }
-
     .switch input[type="checkbox"]:checked ~ .theme-icon #theme-icon-light {
       opacity: 0;
       transform: scale(0.8);
@@ -436,6 +431,7 @@
 </head>
 <body>
   <div id="main-view" class="view active">
+    <!-- Header is always visible -->
     <div class="header">
       <div>
         <h3>Smart Filler</h3>
@@ -462,80 +458,101 @@
     </label>
     </div>
 
-    <button id="fill">Fill with Random Data</button>
-    <button id="smart-fill">Smart Fill with AI</button>
-
-    <div class="settings-group">
-      <h4>Settings</h4>
-      <label class="switchs">
-        <input type="checkbox" id="overlay-toggle" checked />
-        <span>Show smart-fill overlay</span>
-      </label>
-      <label class="switchs">
-        <input type="checkbox" id="auto-run" />
-        Auto-run on page load
-      </label>
-    </div>
-
-    <div class="settings-group">
-      <h4>AI Provider</h4>
-      <div class="provider-card">
-        <label>
-          <input type="radio" name="ai-provider" value="gemini" checked />
-          Gemini API (key rotation)
-        </label>
-        <p>Use your Gemini keys with automatic cooldowns.</p>
-      </div>
-      <div class="provider-card">
-        <label>
-          <input type="radio" name="ai-provider" value="openai" />
-          OpenAI-compatible
-        </label>
-        <p>Point to any OpenAI-style proxy (base URL + endpoint + bearer token).</p>
+    <div id="activation-view" class="view">
+      <div id="activation-settings" class="settings-group">
+        <h4>Extension Activation</h4>
+        <p class="history-subhead">Enter your activation key to unlock full features.</p>
+        <input id="activation-key-input" class="api-key-input" type="text" style="text-transform: uppercase;" placeholder="Enter activation key here" />
+        <button id="activate-extension" class="save-button">Activate Extension</button>
+        <div id="activation-status" style="margin-top: 10px; font-size: 0.9em;"></div>
       </div>
     </div>
 
-    <div id="gemini-settings" class="settings-group provider-settings">
-      <h4>Gemini API Keys</h4>
-      <label for="api-keys">Enter one per line</label>
-      <textarea id="api-keys" class="api-key-input" rows="5" placeholder="Enter API keys, one per line"></textarea>
-      <button id="save-keys" class="save-button">Save Keys</button>
-    </div>
+    <div id="features-view" class="view">
+      <button id="fill">Fill with Random Data</button>
+      <button id="smart-fill">Smart Fill with AI</button>
 
-    <div id="openai-settings" class="settings-group provider-settings hidden">
-      <h4>OpenAI Settings</h4>
-      <label for="openai-base-url">Base URL</label>
-      <input id="openai-base-url" class="api-key-input" type="text" placeholder="https://kotproxy.lewds.dev/openai/v1/" />
-      <label for="openai-endpoint">Endpoint path</label>
-      <input id="openai-endpoint" class="api-key-input" type="text" placeholder="https://kotproxy.lewds.dev/openai/v1/responses" />
-      <label for="openai-model">Model</label>
-      <input id="openai-model" class="api-key-input" type="text" placeholder="gpt-5-nano" />
-      <label for="openai-token">Bearer token</label>
-      <textarea id="openai-token" class="api-key-input" rows="3" placeholder="Enter Bearer token"></textarea>
-      <button id="save-openai" class="save-button">Save OpenAI Settings</button>
-    </div>
+      <div id="current-activation-status" class="settings-group">
+        <h4>Current License Status</h4>
+        <p><strong>Key:</strong> <span id="display-activation-key">Not available</span></p>
+        <p><strong>Status:</strong> <span id="display-license-status">Inactive</span></p>
+        <p><strong>Details:</strong> <span id="display-license-details">N/A</span></p>
+        <button id="deactivate-extension" class="history-clear">Deactivate Extension</button>
+      </div>
+      
+      <div class="settings-group">
+        <h4>Settings</h4>
+        <label class="switchs">
+          <input type="checkbox" id="overlay-toggle" checked />
+          <span>Show smart-fill overlay</span>
+        </label>
+        <label class="switchs">
+          <input type="checkbox" id="auto-run" />
+          Auto-run on page load
+        </label>
+      </div>
 
-    <div class="settings-group">
-      <h4>Custom Website Profiles</h4>
-      <p class="history-subhead">Create custom profiles to use the smart filler on any website by selecting the question and answer elements.</p>
-      <button id="manage-profiles">Manage Profiles</button>
-    </div>
+      <div class="settings-group">
+        <h4>AI Provider</h4>
+        <div class="provider-card">
+          <label>
+            <input type="radio" name="ai-provider" value="gemini" checked />
+            Gemini API (key rotation)
+          </label>
+          <p>Use your Gemini keys with automatic cooldowns.</p>
+        </div>
+        <div class="provider-card">
+          <label>
+            <input type="radio" name="ai-provider" value="openai" />
+            OpenAI-compatible
+          </label>
+          <p>Point to any OpenAI-style proxy (base URL + endpoint + bearer token).</p>
+        </div>
+      </div>
 
-    <div class="settings-group">
-      <h4>Session</h4>
-      <p class="history-subhead">If the same question is not being filled, clear the session for this tab.</p>
-      <button id="reset-session" class="history-clear">Reset Current Session</button>
-    </div>
+      <div id="gemini-settings" class="settings-group provider-settings">
+        <h4>Gemini API Keys</h4>
+        <label for="api-keys">Enter one per line</label>
+        <textarea id="api-keys" class="api-key-input" rows="5" placeholder="Enter API keys, one per line"></textarea>
+        <button id="save-keys" class="save-button">Save Keys</button>
+      </div>
 
-    <div class="settings-group">
-      <h4>Smart Fill History</h4>
-      <p class="history-subhead">View, search, and manage your smart fill history on a dedicated page.</p>
-      <button id="view-history">View History</button>
-    </div>
+      <div id="openai-settings" class="settings-group provider-settings hidden">
+        <h4>OpenAI Settings</h4>
+        <label for="openai-base-url">Base URL</label>
+        <input id="openai-base-url" class="api-key-input" type="text" placeholder="https://kotproxy.lewds.dev/openai/v1/" />
+        <label for="openai-endpoint">Endpoint path</label>
+        <input id="openai-endpoint" class="api-key-input" type="text" placeholder="https://kotproxy.lewds.dev/openai/v1/responses" />
+        <label for="openai-model">Model</label>
+        <input id="openai-model" class="api-key-input" type="text" placeholder="gpt-5-nano" />
+        <label for="openai-token">Bearer token</label>
+        <textarea id="openai-token" class="api-key-input" rows="3" placeholder="Enter Bearer token"></textarea>
+        <button id="save-openai" class="save-button">Save OpenAI Settings</button>
+      </div>
 
-    <div class="center-dev">
-      <span class="developer-tag">By RzkyNT</span>
-    </div>
+      <div class="settings-group">
+        <h4>Custom Website Profiles</h4>
+        <p class="history-subhead">Create custom profiles to use the smart filler on any website by selecting the question and answer elements.</p>
+        <button id="manage-profiles">Manage Profiles</button>
+      </div>
+
+      <div class="settings-group">
+        <h4>Session</h4>
+        <p class="history-subhead">If the same question is not being filled, clear the session for this tab.</p>
+        <button id="reset-session" class="history-clear">Reset Current Session</button>
+      </div>
+
+      <div class="settings-group">
+        <h4>Smart Fill History</h4>
+        <p class="history-subhead">View, search, and manage your smart fill history on a dedicated page.</p>
+        <button id="view-history">View History</button>
+      </div>
+
+      <div class="center-dev">
+        <span class="developer-tag">By RzkyNT</span>
+      </div>
+    </div> <!-- End of features-view -->
+
   </div> <!-- End of main-view -->
   
 
