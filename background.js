@@ -646,20 +646,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             return;
           }
 
-          // Now send the message, as the content script is guaranteed to be ready
-          chrome.tabs.sendMessage(request.tabId, { action: 'startSelection' }, (response) => {
-            if (chrome.runtime.lastError) {
-              console.error("BG: Failed to send 'startSelection' message after injection:", chrome.runtime.lastError.message);
-              // Inform the user via badge for message failure too
-              chrome.action.setBadgeText({ tabId: request.tabId, text: '!' });
-              chrome.action.setBadgeBackgroundColor({ tabId: request.tabId, color: '#ff6b7a' });
-              setTimeout(() => {
-                chrome.action.setBadgeText({ tabId: request.tabId, text: '' });
-              }, 3000);
-            } else {
-              console.log('Background: "startSelection" message sent successfully with response:', response);
-            }
-          });
+          // Now send the message after a small delay to ensure the content script's listener is fully set up.
+          setTimeout(() => {
+            chrome.tabs.sendMessage(request.tabId, { action: 'startSelection' }, (response) => {
+              if (chrome.runtime.lastError) {
+                console.error("BG: Failed to send 'startSelection' message after injection:", chrome.runtime.lastError.message);
+                // Inform the user via badge
+                chrome.action.setBadgeText({ tabId: request.tabId, text: '!' });
+                chrome.action.setBadgeBackgroundColor({ tabId: request.tabId, color: '#ff6b7a' });
+                setTimeout(() => {
+                  chrome.action.setBadgeText({ tabId: request.tabId, text: '' });
+                }, 3000);
+              } else {
+                console.log('Background: "startSelection" message sent successfully with response:', response);
+              }
+            });
+          }, 100); // 100ms delay
         }
       ); // End of executeScript call
     })(); // End of async IIFE

@@ -1,3 +1,10 @@
+if (window.hasRunContentScript) {
+  console.warn("Content script already run. Skipping re-initialization.");
+} else {
+  window.hasRunContentScript = true;
+  initContentScript(); // <== jalankan semua logic di sini
+}
+function initContentScript() {
 // --- Message Listener ---
 // The main listener is updated to route to the new guided profile creation mode.
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -1841,6 +1848,7 @@ function startGuidedProfileCreation() {
     isActive: true,
     currentStepIndex: 0,
     hoveredElement: null,
+    stagedElement: null,
     steps: [
       {
         key: 'questionListContainer',
@@ -1922,12 +1930,13 @@ function createBuilderUI() {
       align-items: center;
       padding: 15px 20px;
       font-family: 'Segoe UI', sans-serif;
+      transition: bottom 0.3s ease;
     }
     #sf-builder-content { flex-grow: 1; }
     #${BUILDER_UI_IDS.INSTRUCTIONS} { margin: 0 0 10px 0; font-size: 16px; }
     #sf-builder-preview-box { background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px 12px; }
     #sf-builder-preview-box span { color: #888; margin-right: 8px; }
-    #${BUILDER_UI_IDS.SELECTOR_PREVIEW} { font-family: 'Courier New', monospace; font-size: 13px; color: #25D366; }
+    #${BUILDER_UI_IDS.SELECTOR_PREVIEW} { font-family: 'Courier New', monospace; font-size: 13px; color: #25D366; word-break: break-all; }
     #sf-builder-actions { display: flex; gap: 10px; }
     .sf-builder-button { 
       padding: 8px 16px; 
@@ -1941,6 +1950,27 @@ function createBuilderUI() {
     .sf-builder-button:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
     .sf-builder-button:disabled { cursor: not-allowed; opacity: 0.5; }
     .sf-builder-button-danger:hover { background: #ff6b7a; border-color: #ff6b7a; }
+
+    @media (max-width: 720px) {
+      #${BUILDER_UI_IDS.CONTAINER} {
+        flex-direction: column;
+        align-items: stretch;
+        bottom: 10px;
+        padding: 15px;
+      }
+      #sf-builder-content {
+        margin-bottom: 15px;
+      }
+      #sf-builder-actions {
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .sf-builder-button {
+        flex-grow: 1;
+        min-width: 120px;
+      }
+    }
   `;
   document.head.appendChild(style);
   document.body.appendChild(panel);
@@ -1959,10 +1989,10 @@ function updateBuilderUI() {
 
   // Update button states
   const undoButton = document.getElementById(BUILDER_UI_IDS.UNDO_BUTTON);
-  if (undoButton) undoButton.disabled = state.currentStepIndex === 0;
+  if (undoButton) undoButton.disabled = state.currentStepIndex === 0 && !state.stagedElement;
 
   const confirmButton = document.getElementById(BUILDER_UI_IDS.CONFIRM_BUTTON);
-  if (confirmButton) confirmButton.disabled = !state.hoveredElement;
+  if (confirmButton) confirmButton.disabled = !state.stagedElement;
 }
 
 // Attaches all necessary event listeners for the builder
@@ -2008,20 +2038,40 @@ function attachBuilderEventListeners() {
     },
     
     click: (e) => {
-      // The click is now handled by the "Confirm" button
       if (!profileBuilderState?.isActive) return;
+      const state = profileBuilderState;
       if (e.target.id === BUILDER_UI_IDS.CONTAINER || e.target.closest(`#${BUILDER_UI_IDS.CONTAINER}`)) return;
       
       e.preventDefault();
       e.stopPropagation();
+
+      if (state.hoveredElement) {
+        // Unstage previous element if any
+        if (state.stagedElement) {
+          state.stagedElement.style.outline = '';
+        }
+        
+        // Stage the new selection
+        state.stagedElement = state.hoveredElement;
+        state.hoveredElement = null; // Clear hover state
+        
+        // Apply staging highlight & update UI
+        state.stagedElement.style.outline = '2px solid #007bff';
+        document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW).textContent = generateSelector(state.stagedElement);
+        document.getElementById(BUILDER_UI_IDS.CONFIRM_BUTTON).disabled = false;
+
+        // Temporarily disable hover effects so user can move to confirm button
+        document.removeEventListener('mouseover', state.listeners.mouseover);
+        document.removeEventListener('mouseout', state.listeners.mouseout);
+      }
     },
 
     confirmClick: () => {
-      if (!profileBuilderState?.isActive || !profileBuilderState.hoveredElement) return;
+      if (!profileBuilderState?.isActive || !profileBuilderState.stagedElement) return;
 
       const state = profileBuilderState;
       const step = state.steps[state.currentStepIndex];
-      const selectedElement = state.hoveredElement;
+      const selectedElement = state.stagedElement;
       
       // Generate and store selector
       if (step.isRelative) {
@@ -2033,24 +2083,46 @@ function attachBuilderEventListeners() {
       step.element = selectedElement; // Store element for relative selections
       
       // Clear outline from confirmed element
-      selectedElement.style.outline = '3px solid #007bff'; // Blue persistent highlight
+      selectedElement.style.outline = '3px solid #28a745'; // Green persistent highlight
+
+      state.stagedElement = null; // Clear staging
 
       // Move to next step or finish
       if (state.currentStepIndex < state.steps.length - 1) {
         state.currentStepIndex++;
         updateBuilderUI();
         showContentToast(`Step ${state.currentStepIndex} completed. Now for the next step.`, 'success');
+        
+        // Re-enable hover listeners for the next step
+        document.addEventListener('mouseover', state.listeners.mouseover);
+        document.addEventListener('mouseout', state.listeners.mouseout);
       } else {
         finishProfileCreation();
       }
     },
 
     undoClick: () => {
-      if (!profileBuilderState?.isActive || profileBuilderState.currentStepIndex === 0) return;
-      
+      if (!profileBuilderState?.isActive) return;
       const state = profileBuilderState;
+
+      // If an element is staged, undo just unstages it.
+      if (state.stagedElement) {
+          state.stagedElement.style.outline = '';
+          state.stagedElement = null;
+          
+          // Re-enable hover listeners
+          document.addEventListener('mouseover', state.listeners.mouseover);
+          document.addEventListener('mouseout', state.listeners.mouseout);
+          
+          document.getElementById(BUILDER_UI_IDS.CONFIRM_BUTTON).disabled = true;
+          document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW).textContent = 'Hover over an element...';
+          showContentToast('Selection cancelled. Hover to select an element.', 'info');
+          return;
+      }
+
+      if (state.currentStepIndex === 0) return;
       
-      // Clear current selection highlight
+      // Clear current selection highlight (if any)
       const currentStep = state.steps[state.currentStepIndex];
       if (currentStep.element) {
         currentStep.element.style.outline = '';
@@ -2065,7 +2137,15 @@ function attachBuilderEventListeners() {
       previousStep.selector = null;
       previousStep.element = null;
       
+      // Re-enable hover listeners for the current step
+      document.addEventListener('mouseover', state.listeners.mouseover);
+      document.addEventListener('mouseout', state.listeners.mouseout);
+
       updateBuilderUI();
+      const selectorPreview = document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW);
+      if (selectorPreview) {
+        selectorPreview.textContent = previousStep.selector || 'Hover over an element...';
+      }
       showContentToast(`Reverted to step ${state.currentStepIndex + 1}.`, 'info');
     },
 
@@ -2101,7 +2181,7 @@ function attachBuilderEventListeners() {
 function cleanupBuilder() {
   if (!profileBuilderState || !profileBuilderState.isActive) return;
 
-  const { listeners, steps, hoveredElement } = profileBuilderState;
+  const { listeners, steps, hoveredElement, stagedElement } = profileBuilderState;
 
   // Remove event listeners
   if (listeners) {
@@ -2113,6 +2193,7 @@ function cleanupBuilder() {
 
   // Remove highlights
   if (hoveredElement) hoveredElement.style.outline = '';
+  if (stagedElement) stagedElement.style.outline = '';
   steps.forEach(step => {
     if (step.element) step.element.style.outline = '';
   });
@@ -2142,7 +2223,7 @@ function finishProfileCreation() {
     // The answer field needs special handling for type detection
     answerField: {
       selector: steps[3].selector,
-      type: getAnswerFieldType([steps[3].element]),
+      type: determineFieldType([steps[3].element]),
     }
   };
 
@@ -2407,4 +2488,5 @@ function generateSelector(el) {
     }
 
     return parts.join(' > ');
+}
 }
