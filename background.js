@@ -648,7 +648,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
           // Now send the message after a small delay to ensure the content script's listener is fully set up.
           setTimeout(() => {
-            chrome.tabs.sendMessage(request.tabId, { action: 'startSelection' }, (response) => {
+            chrome.tabs.sendMessage(request.tabId, { action: 'startSelection', hostname: request.hostname }, (response) => {
               if (chrome.runtime.lastError) {
                 console.error("BG: Failed to send 'startSelection' message after injection:", chrome.runtime.lastError.message);
                 // Inform the user via badge
@@ -668,25 +668,72 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  // --- Profile Editing Workflow ---
+  if (request.action === 'startProfileEditing') {
+    (async () => {
+      const activationStatus = await verifyActivationWithBackend();
+      if (!activationStatus.isActive) {
+          console.warn("Profile editing blocked: Extension not activated.");
+          return;
+      }
+      
+      console.log('Background: Starting guided profile editing process.', request);
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: request.tabId },
+          files: ['content.js'],
+        },
+        () => {
+          if (chrome.runtime.lastError) {
+            console.error("BG: Failed to inject script for editing:", chrome.runtime.lastError.message);
+            chrome.action.setBadgeText({ tabId: request.tabId, text: '!' });
+            chrome.action.setBadgeBackgroundColor({ tabId: request.tabId, color: '#ff6b7a' });
+            setTimeout(() => {
+              chrome.action.setBadgeText({ tabId: request.tabId, text: '' });
+            }, 3000);
+            return;
+          }
+
+          setTimeout(() => {
+            chrome.tabs.sendMessage(request.tabId, { action: 'startSelection', existingProfile: request.profile, hostname: request.hostname }, (response) => {
+              if (chrome.runtime.lastError) {
+                console.error("BG: Failed to send 'startSelection' message for editing:", chrome.runtime.lastError.message);
+                chrome.action.setBadgeText({ tabId: request.tabId, text: '!' });
+                chrome.action.setBadgeBackgroundColor({ tabId: request.tabId, color: '#ff6b7a' });
+                setTimeout(() => {
+                  chrome.action.setBadgeText({ tabId: request.tabId, text: '' });
+                }, 3000);
+              } else {
+                console.log('Background: "startSelection" message sent successfully for editing:', response);
+              }
+            });
+          }, 100); // 100ms delay
+        }
+      );
+    })();
+    return true;
+  }
+
   // --- New Profile Creation Workflow ---
-  if (request.action === 'profileCompleted') {
+  if (request.action === 'profileCompleted' || request.action === 'profileUpdated') { // Combined actions
     (async () => {
       try {
         const { hostname, profile } = request;
         if (!hostname || !profile) {
-          console.error("BG: Invalid profile completion data received.");
+          console.error("BG: Invalid profile data received (completion or update).");
           sendResponse({ status: 'error', message: 'Invalid data.' });
           return;
         }
 
         const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
-        customProfiles[hostname] = profile;
+        customProfiles[hostname] = profile; // Overwrites if already exists, which is intended for update
         await chrome.storage.local.set({ customProfiles });
 
-        console.log(`Background: Profile saved for ${hostname}`, profile);
-        sendResponse({ status: 'profile_saved' });
+        console.log(`Background: Profile ${request.action === 'profileUpdated' ? 'updated' : 'saved'} for ${hostname}`, profile);
+        sendResponse({ status: 'profile_saved' }); // Same response status for simplicity
       } catch (e) {
-        console.error("BG: Error saving profile:", e);
+        console.error("BG: Error saving/updating profile:", e);
         sendResponse({ status: 'error', message: e.message });
       }
     })();

@@ -407,7 +407,8 @@ function loadProfiles() {
       li.innerHTML = `
         <div class="hostname">${hostname}</div>
         <div class="actions">
-          <button class="button-danger" data-hostname="${hostname}">Delete</button>
+          <button class="button-primary edit-profile-button" data-hostname="${hostname}">Edit</button>
+          <button class="button-danger delete-profile-button" data-hostname="${hostname}">Delete</button>
         </div>
       `;
       profilesList.appendChild(li);
@@ -416,7 +417,7 @@ function loadProfiles() {
 }
 
 profilesList.addEventListener('click', (e) => {
-  if (e.target.classList.contains('button-danger')) {
+  if (e.target.classList.contains('delete-profile-button')) {
     const hostname = e.target.dataset.hostname;
     Swal.fire({
       title: 'Are you sure?',
@@ -445,6 +446,9 @@ profilesList.addEventListener('click', (e) => {
         });
       }
     });
+  } else if (e.target.classList.contains('edit-profile-button')) {
+    const hostname = e.target.dataset.hostname;
+    editProfile(hostname);
   }
 });
 
@@ -495,6 +499,65 @@ addNewProfileButton.addEventListener('click', async () => {
   window.close();
 });
 
+async function editProfile(hostname) {
+  const tab = await getActiveTab();
+  if (!tab || !tab.url) {
+    Swal.fire({
+      title: 'Error',
+      text: 'Could not find an active tab. Please open a tab and try again.',
+      icon: 'error',
+      background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+      color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+    });
+    return;
+  }
+
+  if (tab.url.startsWith('chrome://')) {
+    Swal.fire({
+      title: 'Error',
+      text: 'Cannot edit profiles on Chrome system pages.',
+      icon: 'error',
+      background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+      color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+    });
+    return;
+  }
+  
+  if (new URL(tab.url).hostname !== hostname) {
+      Swal.fire({
+          title: 'Error',
+          text: `Cannot edit this profile. You are currently on ${new URL(tab.url).hostname}, but the profile is for ${hostname}. Please navigate to the correct website to edit its profile.`,
+          icon: 'error',
+          background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+          color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+      return;
+  }
+
+  const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
+  const profileToEdit = customProfiles[hostname];
+
+  if (!profileToEdit) {
+    Swal.fire({
+      title: 'Error',
+      text: `Profile for ${hostname} not found.`,
+      icon: 'error',
+      background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+      color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+    });
+    return;
+  }
+
+  chrome.runtime.sendMessage({
+    action: 'startProfileEditing', // New action for editing
+    tabId: tab.id,
+    hostname: hostname,
+    profile: profileToEdit, // Pass the profile to the content script
+  });
+
+  window.close();
+}
+
 function startElementSelection(tabId, options) {
   return new Promise((resolve, reject) => {
       // Send a message to the content script to start selection mode
@@ -513,4 +576,97 @@ function startElementSelection(tabId, options) {
       });
   });
 }
+
+// --- Export Profiles ---
+document.getElementById('export-profiles').addEventListener('click', async () => {
+  const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
+  const dataStr = JSON.stringify(customProfiles, null, 2);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'smart_filler_profiles.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  Swal.fire({
+    title: 'Profiles Exported!',
+    text: 'Your custom profiles have been saved to smart_filler_profiles.json',
+    icon: 'success',
+    background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+    color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+  });
+});
+
+// --- Import Profiles ---
+document.getElementById('import-profiles').addEventListener('click', () => {
+  document.getElementById('import-file-input').click();
+});
+
+document.getElementById('import-file-input').addEventListener('change', async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const importedProfiles = JSON.parse(e.target.result);
+
+      if (typeof importedProfiles !== 'object' || Array.isArray(importedProfiles)) {
+        throw new Error('Invalid JSON format. Expected an object.');
+      }
+      
+      // Basic validation: check if imported profiles have expected structure keys
+      for (const hostname in importedProfiles) {
+        const profile = importedProfiles[hostname];
+        if (!profile.questionListContainer || !profile.questionBlock || !profile.questionText || !profile.answerField) {
+          throw new Error(`Profile for ${hostname} has an invalid structure.`);
+        }
+      }
+
+      const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
+      
+      const confirmResult = await Swal.fire({
+        title: 'Import Profiles',
+        html: `Do you want to merge these profiles with your existing ones?
+               <br><br>Existing profiles with the same hostname will be <strong>overwritten</strong>.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, import them!',
+        cancelButtonText: 'No, cancel',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+
+      if (confirmResult.isConfirmed) {
+        const mergedProfiles = { ...customProfiles, ...importedProfiles };
+        await chrome.storage.local.set({ customProfiles: mergedProfiles });
+        loadProfiles(); // Reload the list to show imported profiles
+        Swal.fire({
+          title: 'Profiles Imported!',
+          text: 'Your custom profiles have been successfully imported.',
+          icon: 'success',
+          background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+          color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+        });
+      }
+
+    } catch (error) {
+      console.error('Error importing profiles:', error);
+      Swal.fire({
+        title: 'Import Failed!',
+        text: `There was an error importing your profiles: ${error.message}. Please ensure it's a valid JSON file.`,
+        icon: 'error',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+    } finally {
+      // Clear the file input value to allow importing the same file again
+      event.target.value = '';
+    }
+  };
+  reader.readAsText(file);
+});
 

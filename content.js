@@ -12,8 +12,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     showContentToast(request.toast.title, request.toast.icon);
     sendResponse({ status: 'ok' });
   } else if (request.action === 'startSelection') {
-    // This now triggers the new guided mode.
-    startGuidedProfileCreation();
+    // This now triggers the new guided mode. Pass existingProfile and hostname if available.
+    startGuidedProfileCreation(request.existingProfile, request.hostname); 
     sendResponse({ status: 'guided_selection_started' });
   }
   // It's crucial to return true if you intend to send a response asynchronously,
@@ -1837,7 +1837,7 @@ const BUILDER_UI_IDS = {
 };
 
 // Main function to start the guided profile creation
-function startGuidedProfileCreation() {
+function startGuidedProfileCreation(existingProfile = null, currentHostname = null) {
   if (profileBuilderState && profileBuilderState.isActive) {
     console.warn("Profile creation is already active.");
     return;
@@ -1846,6 +1846,8 @@ function startGuidedProfileCreation() {
   // 1. Initialize State
   profileBuilderState = {
     isActive: true,
+    isEditing: !!existingProfile, // NEW: Flag to indicate editing mode
+    originalHostname: currentHostname, // NEW: Store original hostname
     currentStepIndex: 0,
     hoveredElement: null,
     stagedElement: null,
@@ -1854,20 +1856,20 @@ function startGuidedProfileCreation() {
         key: 'questionListContainer',
         instruction: 'Select the main container that holds ALL questions.',
         selector: null,
-        isMulti: false,
+        element: null, // NEW: Store element reference for easier manipulation
       },
       {
         key: 'questionBlock',
         instruction: 'Select the container of a SINGLE question (including its text and answers).',
         selector: null,
-        isMulti: false,
+        element: null,
       },
       {
         key: 'questionText',
         instruction: 'Select the question TEXT within the highlighted question block.',
         selector: null,
-        isMulti: false,
         isRelative: true,
+        element: null,
       },
       {
         key: 'answerField',
@@ -1875,18 +1877,61 @@ function startGuidedProfileCreation() {
         selector: null,
         isMulti: false, // We simplify this for now to get a representative element
         isRelative: true,
+        element: null,
       }
     ]
   };
 
+  // If editing an existing profile, pre-fill the steps and jump to the last step
+  if (profileBuilderState.isEditing && existingProfile) {
+    console.log("Pre-filling builder state with existing profile:", existingProfile);
+    
+    // Fill in selectors from the existing profile
+    profileBuilderState.steps[0].selector = existingProfile.questionListContainer;
+    profileBuilderState.steps[1].selector = existingProfile.questionBlock;
+    profileBuilderState.steps[2].selector = existingProfile.questionText;
+    profileBuilderState.steps[3].selector = existingProfile.answerField.selector; // Assuming answerField.selector exists
+
+    // Attempt to find and store element references for each step
+    // This is crucial for relative selectors to work later
+    profileBuilderState.steps.forEach((step, index) => {
+        if (step.selector) {
+            let foundElement = null;
+            if (step.isRelative) {
+                // For relative selectors, we need the parent's element
+                const parentElement = profileBuilderState.steps[index - 1]?.element;
+                if (parentElement && step.selector !== ':scope') {
+                  foundElement = parentElement.querySelector(step.selector);
+                } else if (step.selector === ':scope') {
+                  foundElement = parentElement; // If :scope, the element IS the parent
+                }
+            } else {
+                foundElement = document.querySelector(step.selector);
+            }
+            if (foundElement) {
+                step.element = foundElement;
+                foundElement.style.outline = '3px solid #28a745'; // Green persistent highlight
+                console.log(`Highlighted element for step ${index}:`, foundElement);
+            } else {
+                console.warn(`Element for step ${index} (${step.selector}) not found on page.`);
+            }
+        }
+    });
+
+    // Start at the last step so user can review/confirm all, or modify any.
+    // Or start at step 0 and let them click next. Starting at last step feels more like "editing".
+    profileBuilderState.currentStepIndex = 0; // Start at first step for full review
+  }
+
+
   // 2. Create the UI
   createBuilderUI();
-  updateBuilderUI();
+  updateBuilderUI(); // Update UI after potentially setting steps
 
   // 3. Attach event listeners
   attachBuilderEventListeners();
   
-  showContentToast("Profile creation started. Click an element to begin.", "info");
+  showContentToast(profileBuilderState.isEditing ? "Editing profile. Review or re-select elements." : "Profile creation started. Click an element to begin.", "info");
 }
 
 // Creates the main UI panel for the builder
@@ -2213,10 +2258,10 @@ function cleanupBuilder() {
 function finishProfileCreation() {
   if (!profileBuilderState?.isActive) return;
   
-  const { steps } = profileBuilderState;
+  const { steps, isEditing, originalHostname } = profileBuilderState;
 
   // Construct the profile object from the stored selectors
-  const newProfile = {
+  const profileToSave = {
     questionListContainer: steps[0].selector,
     questionBlock: steps[1].selector,
     questionText: steps[2].selector,
@@ -2227,14 +2272,18 @@ function finishProfileCreation() {
     }
   };
 
-  console.log("Profile creation complete. Final profile:", newProfile);
-  showContentToast('Profile created successfully!', 'success');
+  const action = isEditing ? 'profileUpdated' : 'profileCompleted'; // NEW: Different action based on mode
+  const message = isEditing ? 'Profile updated successfully!' : 'Profile created successfully!';
+  const hostnameToSend = isEditing ? originalHostname : window.location.hostname;
+
+  console.log(`Profile ${isEditing ? 'editing' : 'creation'} complete. Final profile:`, profileToSave);
+  showContentToast(message, 'success');
   
   // Send the complete profile to the background script
   chrome.runtime.sendMessage({
-    action: 'profileCompleted', // New action
-    profile: newProfile,
-    hostname: window.location.hostname
+    action: action,
+    profile: profileToSave,
+    hostname: hostnameToSend,
   });
 
   cleanupBuilder();
