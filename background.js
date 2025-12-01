@@ -7,6 +7,8 @@ const BACKEND_PUBLIC_KEY = "SMK-TARUNA-BANGSA-EKSTENSI-RZKYNT-2025"; // Replace 
 
 // Key for storing the last activation response in local storage
 const LAST_ACTIVATION_RESPONSE_KEY = "lastActivationResponse";
+const LICENSE_CACHE_KEY = "licenseCache";
+const CACHE_DURATION_MS = 10 * 60 * 1000; // 1 hour
 
 chrome.runtime.onInstalled.addListener(function(details) {
   if (details.reason === 'install') {
@@ -388,6 +390,13 @@ async function callOpenAi(request, sendResponse, config) {
 let profileCreationState = {};
 
 async function verifyActivationWithBackend() {
+  // Check for a valid, non-expired cache entry first
+  const { [LICENSE_CACHE_KEY]: cache } = await chrome.storage.local.get(LICENSE_CACHE_KEY);
+  if (cache && (Date.now() - cache.timestamp < CACHE_DURATION_MS)) {
+    console.log("BG: Returning activation status from cache.");
+    return { isActive: cache.isActive, licenseDetails: cache.licenseDetails };
+  }
+
   console.log("BG: Verifying activation status with backend...");
   const { activationKey, deviceIdentifier } = await chrome.storage.local.get(["activationKey", "deviceIdentifier"]);
 
@@ -413,10 +422,28 @@ async function verifyActivationWithBackend() {
     if (response.ok && responseData.data?.status === 'success' && responseData.data?.isActive === true) {
       const licenseDetails = responseData.data.licenseDetails || 'Full';
       console.log(`BG: Verification successful. License: ${licenseDetails}`);
+      
+      // Store successful verification in cache
+      const newCache = {
+        isActive: true,
+        licenseDetails: licenseDetails,
+        timestamp: Date.now()
+      };
+      await chrome.storage.local.set({ [LICENSE_CACHE_KEY]: newCache });
+
       return { isActive: true, licenseDetails: licenseDetails };
     } else {
       const message = responseData.data?.message || 'Unknown status.';
       console.log(`BG: Verification failed or user is inactive. Reason: ${message}`);
+      
+      // Also cache failed attempts to prevent spamming the server
+      const newCache = {
+        isActive: false,
+        licenseDetails: null,
+        timestamp: Date.now()
+      };
+      await chrome.storage.local.set({ [LICENSE_CACHE_KEY]: newCache });
+
       return { isActive: false, licenseDetails: null };
     }
   } catch (error) {
@@ -488,6 +515,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             activationKey: activationKey,
             deviceIdentifier: deviceIdentifier
           });
+          // Invalidate the cache on successful activation
+          await chrome.storage.local.remove(LICENSE_CACHE_KEY);
           console.log(`BG: Aktivasi berhasil. Kunci disimpan. Lisensi: ${licenseDetails}`);
         } else {
           await chrome.storage.local.remove(["activationKey"]); // Clear key on failure
@@ -535,7 +564,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       } catch (error) {
         console.error("BG: Error sending deactivation request to the server:", error);
       } finally {
-        await chrome.storage.local.remove(["activationKey", "licenseDetails", LAST_ACTIVATION_RESPONSE_KEY]);
+        // Invalidate the cache on deactivation
+        await chrome.storage.local.remove([
+          "activationKey", 
+          "licenseDetails", 
+          LAST_ACTIVATION_RESPONSE_KEY,
+          LICENSE_CACHE_KEY
+        ]);
         console.log("BG: Data aktivasi dihapus dari penyimpanan lokal.");
       }
     })();
@@ -589,76 +624,70 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const activationStatus = await verifyActivationWithBackend();
       if (!activationStatus.isActive) {
           console.warn("Profile creation blocked: Extension not activated.");
-          sendResponse({ success: false, message: "Extension not activated. Please activate to create profiles." });
           return;
       }
-      console.log('Background: Starting profile creation.', request);
-      profileCreationState = {
-        tabId: request.tabId,
-        hostname: request.hostname,
-        step: 'questionContainer',
-      };
-      chrome.tabs.sendMessage(request.tabId, { action: 'startSelection', options: { type: 'questionContainer', multi: false } });
-    })();
+      
+      console.log('Background: Starting guided profile creation process.', request);
+
+      chrome.scripting.executeScript( // Removed await here
+        {
+          target: { tabId: request.tabId },
+          files: ['content.js'],
+        },
+        () => { // Callback for when the script has finished injecting and executing
+          if (chrome.runtime.lastError) {
+            console.error("BG: Failed to inject script:", chrome.runtime.lastError.message);
+            // Inform the user via badge
+            chrome.action.setBadgeText({ tabId: request.tabId, text: '!' });
+            chrome.action.setBadgeBackgroundColor({ tabId: request.tabId, color: '#ff6b7a' });
+            setTimeout(() => {
+              chrome.action.setBadgeText({ tabId: request.tabId, text: '' });
+            }, 3000);
+            return;
+          }
+
+          // Now send the message, as the content script is guaranteed to be ready
+          chrome.tabs.sendMessage(request.tabId, { action: 'startSelection' }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error("BG: Failed to send 'startSelection' message after injection:", chrome.runtime.lastError.message);
+              // Inform the user via badge for message failure too
+              chrome.action.setBadgeText({ tabId: request.tabId, text: '!' });
+              chrome.action.setBadgeBackgroundColor({ tabId: request.tabId, color: '#ff6b7a' });
+              setTimeout(() => {
+                chrome.action.setBadgeText({ tabId: request.tabId, text: '' });
+              }, 3000);
+            } else {
+              console.log('Background: "startSelection" message sent successfully with response:', response);
+            }
+          });
+        }
+      ); // End of executeScript call
+    })(); // End of async IIFE
     return true;
   }
-  
-  if (request.action === 'elementSelected') {
-    console.log('Background: Received selected element.', request);
-    const { tabId, step } = profileCreationState;
-    if (sender.tab.id !== tabId) {
-      console.error("Background: Received elementSelected from wrong tab.");
-      return;
-    }
-    if (step === 'questionContainer' && request.selector) {
-      profileCreationState.questionListContainerSelector = request.selector;
-      profileCreationState.step = 'questionBlock';
-      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: { type: 'questionBlock', multi: false } });
-    } else if (step === 'questionBlock' && request.selector) {
-      profileCreationState.exampleQuestionBlockSelector = request.selector;
-      profileCreationState.step = 'questionText';
-      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: { type: 'questionText', multi: false, relativeTo: profileCreationState.exampleQuestionBlockSelector } });
-    } else if (step === 'questionText' && request.relativeSelector) {
-      profileCreationState.questionTextRelativeSelector = request.relativeSelector;
-      profileCreationState.step = 'answerField';
-      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: { type: 'answerField', multi: true, relativeTo: profileCreationState.exampleQuestionBlockSelector } });
-    } else if (step === 'answerField' && (request.relativeSelector || request.relativeSelectors) && request.answerFieldType) {
-      const {
-        hostname,
-        questionListContainerSelector,
-        exampleQuestionBlockSelector,
-        questionTextRelativeSelector,
-      } = profileCreationState;
 
-      let answerFieldData;
-      if (request.relativeSelectors) {
-          answerFieldData = {
-              type: request.answerFieldType,
-              selectors: request.relativeSelectors
-          };
-      } else { // Single selection
-          answerFieldData = {
-              type: request.answerFieldType,
-              selector: request.relativeSelector
-          };
+  // --- New Profile Creation Workflow ---
+  if (request.action === 'profileCompleted') {
+    (async () => {
+      try {
+        const { hostname, profile } = request;
+        if (!hostname || !profile) {
+          console.error("BG: Invalid profile completion data received.");
+          sendResponse({ status: 'error', message: 'Invalid data.' });
+          return;
+        }
+
+        const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
+        customProfiles[hostname] = profile;
+        await chrome.storage.local.set({ customProfiles });
+
+        console.log(`Background: Profile saved for ${hostname}`, profile);
+        sendResponse({ status: 'profile_saved' });
+      } catch (e) {
+        console.error("BG: Error saving profile:", e);
+        sendResponse({ status: 'error', message: e.message });
       }
-      
-      const newProfile = {
-        questionListContainer: questionListContainerSelector,
-        questionBlock: exampleQuestionBlockSelector,
-        questionText: questionTextRelativeSelector,
-        answerField: answerFieldData,
-      };
-      chrome.storage.local.get({ customProfiles: {} }, (result) => {
-        const profiles = result.customProfiles;
-        profiles[hostname] = newProfile;
-        chrome.storage.local.set({ customProfiles: profiles }, () => {
-          console.log('Background: Profile saved for', hostname);
-          chrome.tabs.sendMessage(tabId, { action: 'showContentToast', toast: { icon: 'success', title: `Profile saved for ${hostname}` } });
-        });
-      });
-      profileCreationState = {};
-    }
+    })();
     return true;
   }
 });

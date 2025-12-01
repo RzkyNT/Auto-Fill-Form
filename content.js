@@ -1,3 +1,19 @@
+// --- Message Listener ---
+// The main listener is updated to route to the new guided profile creation mode.
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'showContentToast' && request.toast) {
+    showContentToast(request.toast.title, request.toast.icon);
+    sendResponse({ status: 'ok' });
+  } else if (request.action === 'startSelection') {
+    // This now triggers the new guided mode.
+    startGuidedProfileCreation();
+    sendResponse({ status: 'guided_selection_started' });
+  }
+  // It's crucial to return true if you intend to send a response asynchronously,
+  // although in this refactored version, most responses are simple acknowledgements.
+  return true; 
+});
+
 // Listen for manual trigger
 window.addEventListener("fakeFiller:run", doFakeFill);
 window.addEventListener("fakeFiller:smartFill", doSmartFill);
@@ -1796,193 +1812,421 @@ function getFieldMetadata(field) {
   return metadata;
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // This listener now handles multiple actions
-  if (request.action === 'showContentToast' && request.toast) {
-    showContentToast(request.toast.title, request.toast.icon);
-    sendResponse({status: 'ok'}); // Acknowledge receipt
-  } else if (request.action === 'startSelection') {
-    // This now just triggers the mode, doesn't wait for a response here.
-    enterElementSelectionMode(request.options);
-    sendResponse({status: 'selection_started'}); // Acknowledge receipt
-  }
-  return true;
-});
+// =================================================================================
+// --- NEW PROFILE CREATION MODE (GUIDED UI) ---
+// =================================================================================
 
-function enterElementSelectionMode(options) {
-  // The Promise wrapper is removed. This function now fires and forgets.
-  
-  const isMulti = options.multi === true;
-  const type = typeof options === 'string' ? options : options.type;
-  
-  // --- Overlay and Instructions ---
-  const overlay = document.createElement('div');
-  overlay.id = 'fake-filler-selection-overlay';
-  // (Styles are mostly the same, so omitting for brevity in thought process)
-  overlay.style.position = 'fixed';
-  overlay.style.top = '0';
-  overlay.style.left = '0';
-  overlay.style.width = '100vw';
-  overlay.style.height = '100vh';
-  overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-  overlay.style.zIndex = '2147483647';
-  overlay.style.display = 'flex';
-  overlay.style.justifyContent = 'center';
-  overlay.style.alignItems = 'flex-start';
-  overlay.style.paddingTop = '20px';
-  overlay.style.color = 'white';
-  overlay.style.fontSize = '18px';
-  overlay.style.fontFamily = 'sans-serif';
-  overlay.style.pointerEvents = 'none';
+// Global state for the profile builder
+let profileBuilderState = null;
 
-  let instructions;
-  if (type === 'questionContainer') {
-    instructions = `Click to select the <strong>main container</strong> that holds ALL questions.`;
-  } else if (type === 'questionBlock') {
-    instructions = `Click to select the **ENTIRE container** of ONE question, including its text AND all its answer options.`;
-  } else if (type === 'questionText') {
-    instructions = `Click to select the <strong>question TEXT</strong> within the selected question block.`;
-  } else if (type === 'answerField') {
-    instructions = `Click to select the **answer input field(s)** (e.g., text input, checkboxes, dropdown). If multiple options (radio/checkbox group), click all & press Enter.`;
-  } else {
-    // Fallback for other types or default
-    instructions = isMulti
-      ? `Click on each <strong>${type}</strong> element. Press 'Enter' when finished.`
-      : `Click to select the <strong>${type}</strong> element.`;
+// CSS selectors for the builder UI elements
+const BUILDER_UI_IDS = {
+  CONTAINER: 'sf-builder-container',
+  INSTRUCTIONS: 'sf-builder-instructions',
+  SELECTOR_PREVIEW: 'sf-builder-selector-preview',
+  UNDO_BUTTON: 'sf-builder-undo',
+  CONFIRM_BUTTON: 'sf-builder-confirm',
+  CANCEL_BUTTON: 'sf-builder-cancel',
+};
+
+// Main function to start the guided profile creation
+function startGuidedProfileCreation() {
+  if (profileBuilderState && profileBuilderState.isActive) {
+    console.warn("Profile creation is already active.");
+    return;
   }
 
-  overlay.innerHTML = `
-    <div style="background: black; padding: 15px 25px; border-radius: 10px; pointer-events: auto; border: 1px solid #333;">
-      ${instructions} Press 'Esc' to cancel.
+  // 1. Initialize State
+  profileBuilderState = {
+    isActive: true,
+    currentStepIndex: 0,
+    hoveredElement: null,
+    steps: [
+      {
+        key: 'questionListContainer',
+        instruction: 'Select the main container that holds ALL questions.',
+        selector: null,
+        isMulti: false,
+      },
+      {
+        key: 'questionBlock',
+        instruction: 'Select the container of a SINGLE question (including its text and answers).',
+        selector: null,
+        isMulti: false,
+      },
+      {
+        key: 'questionText',
+        instruction: 'Select the question TEXT within the highlighted question block.',
+        selector: null,
+        isMulti: false,
+        isRelative: true,
+      },
+      {
+        key: 'answerField',
+        instruction: 'Select ONE answer input (e.g., radio button, checkbox, or text field).',
+        selector: null,
+        isMulti: false, // We simplify this for now to get a representative element
+        isRelative: true,
+      }
+    ]
+  };
+
+  // 2. Create the UI
+  createBuilderUI();
+  updateBuilderUI();
+
+  // 3. Attach event listeners
+  attachBuilderEventListeners();
+  
+  showContentToast("Profile creation started. Click an element to begin.", "info");
+}
+
+// Creates the main UI panel for the builder
+function createBuilderUI() {
+  if (document.getElementById(BUILDER_UI_IDS.CONTAINER)) return;
+
+  const panel = document.createElement('div');
+  panel.id = BUILDER_UI_IDS.CONTAINER;
+  panel.innerHTML = `
+    <div id="sf-builder-content">
+      <p id="${BUILDER_UI_IDS.INSTRUCTIONS}"></p>
+      <div id="sf-builder-preview-box">
+        <span>Selector:</span>
+        <code id="${BUILDER_UI_IDS.SELECTOR_PREVIEW}">Hover over an element...</code>
+      </div>
+    </div>
+    <div id="sf-builder-actions">
+      <button id="${BUILDER_UI_IDS.UNDO_BUTTON}" class="sf-builder-button" disabled>Undo</button>
+      <button id="${BUILDER_UI_IDS.CONFIRM_BUTTON}" class="sf-builder-button" disabled>Confirm Selection</button>
+      <button id="${BUILDER_UI_IDS.CANCEL_BUTTON}" class="sf-builder-button sf-builder-button-danger">Cancel</button>
     </div>
   `;
-  document.body.appendChild(overlay);
 
-  // --- State Variables ---
-  let lastHighlightedElement = null;
-  const selectedElements = [];
-
-  // --- Event Handlers ---
-  const mouseoverHandler = (e) => {
-    const target = e.target;
-    if (overlay.contains(target) || selectedElements.includes(target)) {
-      return;
+  const style = document.createElement('style');
+  style.textContent = `
+    #${BUILDER_UI_IDS.CONTAINER} {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90%;
+      max-width: 700px;
+      background: #0B0F14;
+      color: #F2F4F6;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      z-index: 2147483647;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 20px;
+      font-family: 'Segoe UI', sans-serif;
     }
-    target.style.outline = '2px solid #25D366';
-    lastHighlightedElement = target;
-  };
-
-  const mouseoutHandler = (e) => {
-    if (lastHighlightedElement) {
-      lastHighlightedElement.style.outline = '';
+    #sf-builder-content { flex-grow: 1; }
+    #${BUILDER_UI_IDS.INSTRUCTIONS} { margin: 0 0 10px 0; font-size: 16px; }
+    #sf-builder-preview-box { background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px 12px; }
+    #sf-builder-preview-box span { color: #888; margin-right: 8px; }
+    #${BUILDER_UI_IDS.SELECTOR_PREVIEW} { font-family: 'Courier New', monospace; font-size: 13px; color: #25D366; }
+    #sf-builder-actions { display: flex; gap: 10px; }
+    .sf-builder-button { 
+      padding: 8px 16px; 
+      border: 1px solid rgba(255,255,255,0.2); 
+      background: transparent; 
+      color: #F2F4F6;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
     }
-  };
-
-  const cleanup = () => {
-    document.removeEventListener('mouseover', mouseoverHandler);
-    document.removeEventListener('mouseout', mouseoutHandler);
-    document.removeEventListener('click', clickHandler, true);
-    document.removeEventListener('keydown', keydownHandler, true);
-    
-    // Clear all highlights
-    if (lastHighlightedElement) lastHighlightedElement.style.outline = '';
-    selectedElements.forEach(el => el.style.outline = '');
-
-    if (document.body.contains(overlay)) {
-      document.body.removeChild(overlay);
-    }
-  };
-
-  const clickHandler = (e) => {
-    if (overlay.contains(e.target)) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    const clickedEl = e.target;
-    
-    if (isMulti) {
-      // Toggle selection for multi-mode
-      const index = selectedElements.indexOf(clickedEl);
-      if (index > -1) {
-        selectedElements.splice(index, 1);
-        clickedEl.style.outline = ''; // Remove highlight
-      } else {
-        selectedElements.push(clickedEl);
-        clickedEl.style.outline = '3px solid #007bff'; // Persistent blue highlight
-      }
-      lastHighlightedElement = null; // Prevent mouseout from clearing the blue highlight
-    } else {
-      // Single selection mode
-      let selectorToSend;
-      if (options.relativeTo) {
-        const rootSelector = options.relativeTo;
-        const rootElement = document.querySelector(rootSelector);
-        console.log("DEBUG: Relative selection - rootSelector:", rootSelector);
-        console.log("DEBUG: Relative selection - rootElement found:", !!rootElement, rootElement);
-        console.log("DEBUG: Relative selection - clickedEl:", clickedEl);
-        if (!rootElement) {
-            console.error("DEBUG: Relative selection ERROR: rootElement is null for selector:", rootSelector);
-        }
-        const relativeSelector = generateRelativeSelector(clickedEl, rootElement);
-        const answerFieldType = getAnswerFieldType([clickedEl]);
-        selectorToSend = {
-          relativeSelector: relativeSelector,
-          answerFieldType: answerFieldType,
-        };
-        console.log("DEBUG: Relative selection - generated relativeSelector:", selectorToSend.relativeSelector);
-        console.log("DEBUG: Relative selection - inferred answerFieldType:", answerFieldType);
-      } else {
-        selectorToSend = { selector: generateSelector(clickedEl) };
-      }
-
-      if (lastHighlightedElement) lastHighlightedElement.style.outline = '';
-      clickedEl.style.outline = '3px solid #28a745'; // Success green
-
-      setTimeout(() => {
-        cleanup();
-        chrome.runtime.sendMessage({ action: 'elementSelected', ...selectorToSend });
-      }, 300);
-    }
-  };
-  
-  const keydownHandler = (e) => {
-    e.stopPropagation();
-    if (e.key === 'Escape') {
-      cleanup();
-      // Optionally, notify the background script of cancellation
-      chrome.runtime.sendMessage({ action: 'selectionCancelled' });
-    }
-    if (isMulti && e.key === 'Enter') {
-      if (selectedElements.length > 0) {
-        let selectorsToSend;
-        if (options.relativeTo) {
-          const rootElement = document.querySelector(options.relativeTo);
-          const relativeSelectors = selectedElements.map(el => generateRelativeSelector(el, rootElement));
-          const answerFieldType = getAnswerFieldType(selectedElements);
-          selectorsToSend = { 
-            relativeSelectors: relativeSelectors,
-            answerFieldType: answerFieldType,
-          };
-          console.log("DEBUG: Relative selection - generated relativeSelectors:", selectorsToSend.relativeSelectors);
-          console.log("DEBUG: Relative selection - inferred answerFieldType:", answerFieldType);
-        } else {
-          selectorsToSend = { selectors: selectedElements.map(generateSelector) };
-        }
-        cleanup();
-        chrome.runtime.sendMessage({ action: 'elementSelected', ...selectorsToSend });
-      } else {
-        cleanup();
-        chrome.runtime.sendMessage({ action: 'selectionCancelled', reason: 'No elements selected.' });
-      }
-    }
-  };
-
-  document.addEventListener('mouseover', mouseoverHandler);
-  document.addEventListener('mouseout', mouseoutHandler);
-  document.addEventListener('click', clickHandler, true);
-  document.addEventListener('keydown', keydownHandler, true);
+    .sf-builder-button:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
+    .sf-builder-button:disabled { cursor: not-allowed; opacity: 0.5; }
+    .sf-builder-button-danger:hover { background: #ff6b7a; border-color: #ff6b7a; }
+  `;
+  document.head.appendChild(style);
+  document.body.appendChild(panel);
 }
+
+// Updates the UI based on the current state
+function updateBuilderUI() {
+  if (!profileBuilderState?.isActive) return;
+
+  const state = profileBuilderState;
+  const step = state.steps[state.currentStepIndex];
+
+  // Update instructions
+  const instructionEl = document.getElementById(BUILDER_UI_IDS.INSTRUCTIONS);
+  if (instructionEl) instructionEl.innerHTML = `<strong>Step ${state.currentStepIndex + 1}/${state.steps.length}:</strong> ${step.instruction}`;
+
+  // Update button states
+  const undoButton = document.getElementById(BUILDER_UI_IDS.UNDO_BUTTON);
+  if (undoButton) undoButton.disabled = state.currentStepIndex === 0;
+
+  const confirmButton = document.getElementById(BUILDER_UI_IDS.CONFIRM_BUTTON);
+  if (confirmButton) confirmButton.disabled = !state.hoveredElement;
+}
+
+// Attaches all necessary event listeners for the builder
+function attachBuilderEventListeners() {
+  // Use a single object for listener functions to easily add/remove them
+  const listeners = {
+    mouseover: (e) => {
+      if (!profileBuilderState?.isActive) return;
+      const target = e.target;
+      if (target.id === BUILDER_UI_IDS.CONTAINER || target.closest(`#${BUILDER_UI_IDS.CONTAINER}`)) return;
+
+      // Un-highlight previous element
+      if (profileBuilderState.hoveredElement) {
+        profileBuilderState.hoveredElement.style.outline = '';
+      }
+
+      // Highlight new element and update state
+      target.style.outline = '2px dashed #25D366';
+      profileBuilderState.hoveredElement = target;
+      
+      // Update selector preview
+      const selectorPreview = document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW);
+      if (selectorPreview) {
+        selectorPreview.textContent = generateSelector(target);
+      }
+      
+      // Update confirm button state
+      const confirmButton = document.getElementById(BUILDER_UI_IDS.CONFIRM_BUTTON);
+      if (confirmButton) confirmButton.disabled = false;
+    },
+
+    mouseout: (e) => {
+       if (profileBuilderState?.hoveredElement) {
+        profileBuilderState.hoveredElement.style.outline = '';
+        profileBuilderState.hoveredElement = null;
+
+        const selectorPreview = document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW);
+        if (selectorPreview) selectorPreview.textContent = 'Hover over an element...';
+        
+        const confirmButton = document.getElementById(BUILDER_UI_IDS.CONFIRM_BUTTON);
+        if (confirmButton) confirmButton.disabled = true;
+      }
+    },
+    
+    click: (e) => {
+      // The click is now handled by the "Confirm" button
+      if (!profileBuilderState?.isActive) return;
+      if (e.target.id === BUILDER_UI_IDS.CONTAINER || e.target.closest(`#${BUILDER_UI_IDS.CONTAINER}`)) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+    },
+
+    confirmClick: () => {
+      if (!profileBuilderState?.isActive || !profileBuilderState.hoveredElement) return;
+
+      const state = profileBuilderState;
+      const step = state.steps[state.currentStepIndex];
+      const selectedElement = state.hoveredElement;
+      
+      // Generate and store selector
+      if (step.isRelative) {
+        const parentStep = state.steps[state.currentStepIndex - 1];
+        step.selector = generateRelativeSelector(selectedElement, parentStep.element);
+      } else {
+        step.selector = generateSelector(selectedElement);
+      }
+      step.element = selectedElement; // Store element for relative selections
+      
+      // Clear outline from confirmed element
+      selectedElement.style.outline = '3px solid #007bff'; // Blue persistent highlight
+
+      // Move to next step or finish
+      if (state.currentStepIndex < state.steps.length - 1) {
+        state.currentStepIndex++;
+        updateBuilderUI();
+        showContentToast(`Step ${state.currentStepIndex} completed. Now for the next step.`, 'success');
+      } else {
+        finishProfileCreation();
+      }
+    },
+
+    undoClick: () => {
+      if (!profileBuilderState?.isActive || profileBuilderState.currentStepIndex === 0) return;
+      
+      const state = profileBuilderState;
+      
+      // Clear current selection highlight
+      const currentStep = state.steps[state.currentStepIndex];
+      if (currentStep.element) {
+        currentStep.element.style.outline = '';
+      }
+      
+      state.currentStepIndex--;
+
+      const previousStep = state.steps[state.currentStepIndex];
+      if (previousStep.element) {
+        previousStep.element.style.outline = ''; // Clear persistent highlight
+      }
+      previousStep.selector = null;
+      previousStep.element = null;
+      
+      updateBuilderUI();
+      showContentToast(`Reverted to step ${state.currentStepIndex + 1}.`, 'info');
+    },
+
+    cancelClick: () => {
+      cleanupBuilder();
+      chrome.runtime.sendMessage({ action: 'selectionCancelled', reason: 'User cancelled.' });
+      showContentToast('Profile creation cancelled.', 'error');
+    },
+    
+    keydown: (e) => {
+        if (!profileBuilderState?.isActive) return;
+        if (e.key === 'Escape') {
+            listeners.cancelClick();
+        }
+    }
+  };
+
+  profileBuilderState.listeners = listeners;
+
+  // Attach main listeners
+  document.addEventListener('mouseover', listeners.mouseover);
+  document.addEventListener('mouseout', listeners.mouseout);
+  document.addEventListener('click', listeners.click, true);
+  document.addEventListener('keydown', listeners.keydown, true);
+
+  // Attach UI button listeners
+  document.getElementById(BUILDER_UI_IDS.CONFIRM_BUTTON).addEventListener('click', listeners.confirmClick);
+  document.getElementById(BUILDER_UI_IDS.UNDO_BUTTON).addEventListener('click', listeners.undoClick);
+  document.getElementById(BUILDER_UI_IDS.CANCEL_BUTTON).addEventListener('click', listeners.cancelClick);
+}
+
+// Tears down the UI and all event listeners
+function cleanupBuilder() {
+  if (!profileBuilderState || !profileBuilderState.isActive) return;
+
+  const { listeners, steps, hoveredElement } = profileBuilderState;
+
+  // Remove event listeners
+  if (listeners) {
+    document.removeEventListener('mouseover', listeners.mouseover);
+    document.removeEventListener('mouseout', listeners.mouseout);
+    document.removeEventListener('click', listeners.click, true);
+    document.removeEventListener('keydown', listeners.keydown, true);
+  }
+
+  // Remove highlights
+  if (hoveredElement) hoveredElement.style.outline = '';
+  steps.forEach(step => {
+    if (step.element) step.element.style.outline = '';
+  });
+
+  // Remove UI
+  const panel = document.getElementById(BUILDER_UI_IDS.CONTAINER);
+  if (panel) panel.parentElement.removeChild(panel);
+  
+  const style = document.head.querySelector(`style[id*="sf-builder"]`);
+  if (style) style.parentElement.removeChild(style);
+
+  // Reset state
+  profileBuilderState = null;
+}
+
+// Finalizes the process and sends data to the background
+function finishProfileCreation() {
+  if (!profileBuilderState?.isActive) return;
+  
+  const { steps } = profileBuilderState;
+
+  // Construct the profile object from the stored selectors
+  const newProfile = {
+    questionListContainer: steps[0].selector,
+    questionBlock: steps[1].selector,
+    questionText: steps[2].selector,
+    // The answer field needs special handling for type detection
+    answerField: {
+      selector: steps[3].selector,
+      type: getAnswerFieldType([steps[3].element]),
+    }
+  };
+
+  console.log("Profile creation complete. Final profile:", newProfile);
+  showContentToast('Profile created successfully!', 'success');
+  
+  // Send the complete profile to the background script
+  chrome.runtime.sendMessage({
+    action: 'profileCompleted', // New action
+    profile: newProfile,
+    hostname: window.location.hostname
+  });
+
+  cleanupBuilder();
+}
+
+/**
+ * Generates a more robust and readable CSS selector for an element.
+ * @param {Element} el The element to generate a selector for.
+ * @returns {string} A CSS selector.
+ */
+function generateSelector(el) {
+    if (!(el instanceof Element)) return;
+    const path = [];
+    while (el.nodeType === Node.ELEMENT_NODE) {
+        let selector = el.nodeName.toLowerCase();
+        if (el.id) {
+            selector += `#${el.id}`;
+            path.unshift(selector);
+            break; // ID is unique, no need to go further
+        } else {
+            let sib = el, nth = 1;
+            while (sib.previousElementSibling) {
+                sib = sib.previousElementSibling;
+                if (sib.nodeName.toLowerCase() == selector) nth++;
+            }
+            if (nth != 1) selector += `:nth-of-type(${nth})`;
+        }
+        path.unshift(selector);
+        el = el.parentNode;
+    }
+    return path.join(" > ");
+}
+
+/**
+ * Generates a CSS selector for a target element relative to a root element.
+ * @param {Element} targetEl The element to select.
+ * @param {Element} rootEl The root element for the relative path.
+ * @returns {string} A relative CSS selector.
+ */
+function generateRelativeSelector(targetEl, rootEl) {
+    if (!targetEl || !rootEl || !rootEl.contains(targetEl)) {
+        console.warn("generateRelativeSelector: Target is not a descendant of root. Falling back to absolute selector.");
+        return generateSelector(targetEl);
+    }
+    
+    const path = [];
+    let currentEl = targetEl;
+    while (currentEl && currentEl !== rootEl) {
+        let selector = currentEl.nodeName.toLowerCase();
+        // Prefer class names if they are reasonably specific
+        if (currentEl.className && typeof currentEl.className === 'string') {
+            const stableClasses = currentEl.className.split(' ').filter(c => c && !c.match(/[:]/));
+            if (stableClasses.length > 0) {
+                selector = '.' + stableClasses.join('.');
+            }
+        }
+        
+        let sib = currentEl, nth = 1;
+        while ((sib = sib.previousElementSibling)) {
+            if (sib.nodeName === currentEl.nodeName) nth++;
+        }
+        if (nth > 1) {
+            selector += `:nth-of-type(${nth})`;
+        }
+        
+        path.unshift(selector);
+        currentEl = currentEl.parentElement;
+    }
+    return path.join(' > ');
+}
+
+
+
 
 // Helper to dynamically detect answer field type and elements within a given question block
 function getAnswerFieldAndTypeInBlock(questionBlockElement) {
@@ -2024,28 +2268,25 @@ function getAnswerFieldAndTypeInBlock(questionBlockElement) {
         }
     }
 
-    // --- 4. Check for checkbox group ---
+    // --- 4. Check for checkboxes ---
     const checkboxes = questionBlockElement.querySelectorAll('input[type="checkbox"]');
     if (checkboxes.length > 1) { 
         const selectors = Array.from(checkboxes).map(el => generateRelativeSelector(el, questionBlockElement)).filter(Boolean);
         if (selectors.length > 0) {
             return { type: 'checkbox_group', selectors: selectors, elements: Array.from(checkboxes) };
         }
-    }
-
-    // --- 5. Check for single checkbox ---
-    if (checkboxes.length === 1) { 
-        const relativeSelector = generateRelativeSelector(checkboxes[0], questionBlockElement);
-        if (relativeSelector) {
-            return { type: 'single_checkbox', selector: relativeSelector, element: checkboxes[0] };
+    } else if (checkboxes.length === 1) {
+        const selector = generateRelativeSelector(checkboxes[0], questionBlockElement);
+        if (selector) {
+            return { type: 'single_checkbox', selector: selector, element: checkboxes[0] };
         }
     }
-    
+
     console.warn("getAnswerFieldAndTypeInBlock: No identifiable answer field found in block.", questionBlockElement);
-    return null;
+    return null; // No identifiable field found
 }
 
-function getAnswerFieldType(elements) {
+function determineFieldType(elements) {
     if (!elements || elements.length === 0) return 'unknown';
 
     if (elements.length === 1) {

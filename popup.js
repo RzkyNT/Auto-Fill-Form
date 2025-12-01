@@ -1,3 +1,7 @@
+document.getElementById("activation-key-input").addEventListener("input", function () {
+  this.value = this.value.toUpperCase();
+});
+
 // --- Buttons ---
 document.getElementById("fill").addEventListener("click", () => triggerFill("fakeFiller:run"));
 document.getElementById("smart-fill").addEventListener("click", () => triggerFill("fakeFiller:smartFill"));
@@ -443,6 +447,16 @@ profilesList.addEventListener('click', (e) => {
     });
   }
 });
+
+const openTestProfileButton = document.getElementById("open-test-profile");
+if (openTestProfileButton) {
+  openTestProfileButton.addEventListener("click", () => {
+chrome.tabs.create({
+  url: "https://rizqiahsansetiawan.ct.ws/ext/test_profile.html"
+});
+  });
+}
+
 
 addNewProfileButton.addEventListener('click', async () => {
   const tab = await getActiveTab();

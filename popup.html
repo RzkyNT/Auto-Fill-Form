@@ -34,7 +34,8 @@
 
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      width: 320px;
+      width:100%;
+      min-width: 320px;
       padding: 22px;
       background: var(--color-bg);
       color: var(--color-text);
@@ -426,6 +427,9 @@
       display: flex;
       justify-content: center;
     }
+    .api-key-input {
+      text-transform: uppercase;
+    }
 
   </style>
 </head>
@@ -462,7 +466,10 @@
       <div id="activation-settings" class="settings-group">
         <h4>Extension Activation</h4>
         <p class="history-subhead">Enter your activation key to unlock full features.</p>
-        <input id="activation-key-input" class="api-key-input" type="text" style="text-transform: uppercase;" placeholder="Enter activation key here" />
+        <input id="activation-key-input"
+        class="api-key-input"
+        type="text"
+        placeholder="Enter activation key here" />
         <button id="activate-extension" class="save-button">Activate Extension</button>
         <div id="activation-status" style="margin-top: 10px; font-size: 0.9em;"></div>
       </div>
@@ -559,14 +566,14 @@
   <div id="profiles-view" class="view">
     <button id="back-to-settings" class="back-button">Back to Settings</button>
     <h1>Custom Website Profiles</h1>
-    <p>Here you can manage custom profiles for websites where the automatic detection doesn't work.
-      This allows you to manually select the question and answer elements for the Smart Filler.</p>
+    <p style="margin-bottom: 20px;">Here you can manage custom profiles for websites where the automatic detection doesn't work.</p>
 
     <div id="profiles-container">
       <ul id="profiles-list" class="profiles-list">
         <!-- Profiles will be dynamically inserted here -->
       </ul>
       <button id="add-new-profile" class="button-primary">Add New Profile</button>
+      <button id="open-test-profile" class="button-primary">Open Profile Test Page</button>
     </div>
   </div> <!-- End of profiles-view -->
 
