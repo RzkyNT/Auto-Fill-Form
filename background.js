@@ -11,9 +11,14 @@ const LICENSE_CACHE_KEY = "licenseCache";
 const CACHE_DURATION_MS = 10 * 60 * 1000; // 1 hour
 
 chrome.runtime.onInstalled.addListener(function(details) {
+  // On first install, open a welcome page.
   if (details.reason === 'install') {
     chrome.tabs.create({ url: 'https://rizqiahansetiawan.ct.ws/ext/welcome.html' });
   }
+
+  // On install or update, run a check for a new version.
+  // A small delay is used to ensure network is available.
+  setTimeout(checkForUpdates, 2000);
 });
 
 // This script handles smart fill requests to Gemini or OpenAI depending on user settings.
@@ -738,5 +743,88 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     })();
     return true;
+  }
+});// --- Update Checker ---
+
+const UPDATE_CHECK_ALARM_NAME = 'update-check-alarm';
+// IMPORTANT: User must replace this URL with the raw URL to their version.json on GitHub
+const VERSION_URL = 'https://raw.githubusercontent.com/RzkyNT/Auto-Fill-Form/main/version.json'; 
+
+async function compareVersions(versionA, versionB) {
+  const partsA = versionA.split('.').map(Number);
+  const partsB = versionB.split('.').map(Number);
+  const len = Math.max(partsA.length, partsB.length);
+  for (let i = 0; i < len; i++) {
+    const a = partsA[i] || 0;
+    const b = partsB[i] || 0;
+    if (a > b) return 1;
+    if (b > a) return -1;
+  }
+  return 0;
+}
+
+async function checkForUpdates() {
+  console.log('Checking for extension updates...');
+  
+  if (VERSION_URL.includes('USERNAME/REPONAME')) {
+    console.warn('Update checker: Please replace the placeholder VERSION_URL in background.js');
+    return;
+  }
+
+  try {
+    const response = await fetch(VERSION_URL, { cache: 'no-cache' });
+    if (!response.ok) {
+      throw new Error("Failed to fetch version info: ");
+    }
+    const latest = await response.json();
+    const currentVersion = chrome.runtime.getManifest().version;
+
+    if (await compareVersions(latest.version, currentVersion) > 0) {
+      console.log("New version found: . Current version: ");
+      showUpdateNotification(latest);
+    } else {
+      console.log('Extension is up to date.');
+    }
+  } catch (error) {
+    console.error('Error checking for updates:', error);
+  }
+}
+
+function showUpdateNotification(versionInfo) {
+  const notificationId = 'update-notification';
+  chrome.notifications.create(notificationId, {
+    type: 'basic',
+    iconUrl: 'images/icon.png',
+    title: 'Pembaruan Tersedia!',
+    message: "Versi baru  dari Smart Filler tersedia.",
+    buttons: [{ title: 'Download di GitHub' }],
+    priority: 2
+  });
+
+  // Store the download URL to be used when the button is clicked
+  chrome.storage.local.set({ [notificationId]: versionInfo.release_url });
+}
+
+// Listener for notification button clicks
+chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
+  if (notificationId === 'update-notification' && buttonIndex === 0) {
+    const { [notificationId]: url } = await chrome.storage.local.get(notificationId);
+    if (url) {
+      chrome.tabs.create({ url: url });
+    }
+    chrome.notifications.clear(notificationId);
+  }
+});
+
+// Schedule the update check
+chrome.alarms.create(UPDATE_CHECK_ALARM_NAME, {
+  delayInMinutes: 1, 
+  periodInMinutes: 1440
+});
+
+// Listener for the alarm
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name === UPDATE_CHECK_ALARM_NAME) {
+    checkForUpdates();
   }
 });

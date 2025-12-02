@@ -1,9 +1,9 @@
 {
   "name": "Smart Filler Simple",
-  "version": "1.0",
+  "version": "1.0.0",
   "manifest_version": 3,
   "description": "Auto-fill form fields with random data",
-  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "permissions": ["activeTab", "scripting", "storage", "tabs", "notifications", "alarms"],
   "host_permissions": [
     "https://random-word-api.vercel.app/",
     "https://generativelanguage.googleapis.com/",
