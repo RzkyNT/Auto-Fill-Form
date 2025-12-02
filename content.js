@@ -238,6 +238,50 @@ function getAiResponse(prompt) {
   });
 }
 
+/**
+ * Calls an OCR API to get text from an image URL.
+ * @param {string} imageUrl The URL of the image to process.
+ * @returns {Promise<string>} A promise that resolves with the OCR text, or an empty string on failure.
+ */
+async function getTextFromImage(imageUrl) {
+    if (!imageUrl) return '';
+    
+    const apiKey = 'keysita_47JX47JX'; 
+    let effectiveImageUrl = imageUrl;
+
+    // The API requires the URL to end with an image extension. If it doesn't,
+    // we add a fake query parameter to bypass this validation.
+    if (!/\.(jpg|jpeg|png|webp)$/i.test(imageUrl)) {
+        effectiveImageUrl += (imageUrl.includes('?') ? '&' : '?') + 'ext=.png';
+    }
+    
+    const ocrApiUrl = `https://api.ferdev.my.id/tools/ocr?link=${encodeURIComponent(effectiveImageUrl)}&apikey=${apiKey}`;
+
+    try {
+        updateProgressOverlay("Reading image (OCR)...", "Mengambil teks dari gambar.");
+        const response = await fetch(ocrApiUrl);
+        if (!response.ok) {
+            throw new Error(`OCR API request failed with status ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.success && data.text) {
+            console.log("OCR Success:", data.text);
+            updateProgressOverlay("Image content read", data.text);
+            return data.text;
+        }
+        if (data.text) {
+             console.log("OCR Success (no success field):", data.text);
+             updateProgressOverlay("Image content read", data.text);
+             return data.text;
+        }
+        throw new Error('OCR response did not contain a usable text field.');
+    } catch (error) {
+        console.error("OCR Error:", error);
+        updateProgressOverlay("OCR Error", error.message);
+        return '';
+    }
+}
+
 function formatAiResponseForDisplay(text) {
   if (typeof text !== 'string') return text;
   return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -1172,27 +1216,30 @@ async function handleCustomProfile(profile) {
 async function processSingleCustomProfileQuestion(questionBlockElement, profile, index, total) {
   try {
     const questionTextElement = questionBlockElement.querySelector(profile.questionText);
-    if (!questionTextElement) {
-      console.warn(`Could not find question text within block for question ${index}. Skipping.`);
+    const questionText = (questionTextElement?.textContent || '').trim();
+
+    // --- OCR Integration ---
+    const imageElement = questionBlockElement.querySelector('img');
+    const imageUrl = imageElement ? imageElement.src : null;
+    const imageText = await getTextFromImage(imageUrl);
+    const fullQuestionText = (questionText + ' ' + imageText).trim();
+    // --- End OCR Integration ---
+
+    if (!fullQuestionText) {
+      console.warn(`Question text or image content is empty for question ${index}. Skipping.`);
       return;
     }
-    const questionText = (questionTextElement.textContent || '').trim();
 
-    if (!questionText) {
-      console.warn(`Question text is empty for question ${index}. Skipping.`);
-      return;
-    }
-
-    const questionHash = btoa(encodeURIComponent(questionText));
+    const questionHash = btoa(encodeURIComponent(fullQuestionText));
     const answeredHashes = await getAnsweredQuestionHashes();
     if (answeredHashes.includes(questionHash)) {
       console.log(`Question ${index} already answered. Skipping.`);
       return;
     }
 
-    startHistoryEntry(questionText);
-    console.log(`--- Processing Question ${index}/${total}: "${questionText}"`);
-    updateProgressOverlay(`Reading question ${index}/${total}`, questionText);
+    startHistoryEntry(fullQuestionText);
+    console.log(`--- Processing Question ${index}/${total}: "${fullQuestionText}"`);
+    updateProgressOverlay(`Reading question ${index}/${total}`, fullQuestionText);
 
     const detectedAnswerField = getAnswerFieldAndTypeInBlock(questionBlockElement);
 
@@ -1209,8 +1256,8 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
 
     if (detectedAnswerField.type === 'text_input') {
         const inputElement = detectedAnswerField.element;
-        const prompt = `Provide a concise and appropriate answer for the following question: "${questionText}"`;
-        updateProgressOverlay("Consulting AI provider...", questionText);
+        const prompt = `Provide a concise and appropriate answer for the following question: "${fullQuestionText}"`;
+        updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
         inputElement.value = aiAnswer;
         inputElement.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1220,36 +1267,15 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
         for (const el of detectedAnswerField.elements) {
             options.push({ element: el, label: (function() {
                 let labelText = '';
-                // 1. Try to find the text of the associated option via 'for' attribute
                 if (el.id) {
                     const associatedLabel = questionBlockElement.querySelector(`label[for="${el.id}"]`);
-                    if (associatedLabel) {
-                        labelText = associatedLabel.textContent.trim();
-                    }
+                    if (associatedLabel) labelText = associatedLabel.textContent.trim();
                 }
-                
-                // 2. If not found, try parent's text content (common for structures like <div><input>Text</div>)
-                if (!labelText && el.parentElement) {
-                    labelText = el.parentElement.textContent.trim();
-                }
-
-                // 3. If still not found, try next or previous sibling's text content
-                if (!labelText && el.nextElementSibling) {
-                    labelText = el.nextElementSibling.textContent.trim();
-                }
-                if (!labelText && el.previousElementSibling) {
-                    labelText = el.previousElementSibling.textContent.trim();
-                }
-                
-                // 4. Fallback to el.value if it's not a generic "on", "1", or "true" and it provides meaningful text
-                if (!labelText && el.value && el.value.toLowerCase() !== 'on' && el.value.toLowerCase() !== '1' && el.value.toLowerCase() !== 'true') {
-                    labelText = el.value;
-                }
-                
-                // 5. Final fallback to ID for debugging if nothing else works
-                if (!labelText) {
-                    labelText = el.id;
-                }
+                if (!labelText && el.parentElement) labelText = el.parentElement.textContent.trim();
+                if (!labelText && el.nextElementSibling) labelText = el.nextElementSibling.textContent.trim();
+                if (!labelText && el.previousElementSibling) labelText = el.previousElementSibling.textContent.trim();
+                if (!labelText && el.value && el.value.toLowerCase() !== 'on' && el.value.toLowerCase() !== '1' && el.value.toLowerCase() !== 'true') labelText = el.value;
+                if (!labelText) labelText = el.id;
                 return labelText;
             })() });
         }
@@ -1265,8 +1291,8 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
           smartFillSession.currentEntry.choices = options.map(opt => opt.label);
         }
 
-        const prompt = `Question: "${questionText}"\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
-        updateProgressOverlay("Consulting AI provider...", questionText);
+        const prompt = `Question: "${fullQuestionText}"\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
+        updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
         console.log("AI Answer received:", aiAnswer);
         console.log("Comparing against options:", options.map(o => o.label));
@@ -1281,8 +1307,8 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
         }
     } else if (detectedAnswerField.type === 'single_checkbox') {
         const checkboxElement = detectedAnswerField.element;
-        const prompt = `Based on the question "${questionText}", should the checkbox be checked? Respond with only "YES" or "NO".`;
-        updateProgressOverlay("Consulting AI provider...", questionText);
+        const prompt = `Based on the question "${fullQuestionText}", should the checkbox be checked? Respond with only "YES" or "NO".`;
+        updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
         if (aiAnswer.toLowerCase() === 'yes') {
             checkboxElement.checked = true;
@@ -1306,8 +1332,8 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
             smartFillSession.currentEntry.choices = options.map(opt => opt.label);
         }
 
-        const prompt = `Question: "${questionText}"\nDropdown Options: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct option? Respond with only the exact text of the best option. Do not add any explanation.`;
-        updateProgressOverlay("Consulting AI provider...", questionText);
+        const prompt = `Question: "${fullQuestionText}"\nDropdown Options: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct option? Respond with only the exact text of the best option. Do not add any explanation.`;
+        updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
         console.log("AI Answer received:", aiAnswer);
         updateProgressOverlay("Matching AI response...", aiAnswer);
