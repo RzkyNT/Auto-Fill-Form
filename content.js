@@ -521,6 +521,21 @@ function enableUserSelect() {
     }
   `;
   document.head.appendChild(style);
+
+  // Forcefully re-enable context menu and selection.
+  // Use capturing to prevent other listeners from running.
+  const stopPropagation = e => e.stopPropagation();
+  document.addEventListener('contextmenu', stopPropagation, true);
+  document.addEventListener('selectstart', stopPropagation, true);
+  document.addEventListener('dragstart', stopPropagation, true);
+
+  // Nullify any inline event handlers on the body and document
+  document.body.oncontextmenu = null;
+  document.body.onselectstart = null;
+  document.body.ondragstart = null;
+  document.oncontextmenu = null;
+  document.onselectstart = null;
+  document.ondragstart = null;
 }
 
 // Action Button SVG icons
