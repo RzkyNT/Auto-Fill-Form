@@ -863,11 +863,11 @@ function createChatOverlay() {
     bubble.className = `chat-message-bubble ${message.sender}-message`;
     if (message.isError) bubble.classList.add('error');
 
-    let messageContent = message.text;
+    const messageContent = message.text;
 
     if (message.sender === 'bot') {
-      messageContent = formatAiResponseForDisplay(messageContent);
-      bubble.innerHTML = messageContent;
+      // Use the new safe renderer for bot messages
+      renderChatWithLatex(messageContent, bubble);
       
       const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M160-400v400h480v-400H160Zm80 80h320v240H240v-240Zm-80-480v-80h480v80H160Zm560 560v-560h80v560h-80Zm-400-400v-80h480v80H320Zm80-80v-80h480v80H400Zm80-80v-80h480v80H480Z"/></svg>`;
       const copyButton = document.createElement('button');
