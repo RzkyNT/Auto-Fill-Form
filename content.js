@@ -282,6 +282,77 @@ async function getTextFromImage(imageUrl) {
     }
 }
 
+/**
+ * Calls an Img2Prompt API to get a description of an image.
+ * @param {string} imageUrl The URL of the image to process.
+ * @returns {Promise<string>} A promise that resolves with the image description, or an empty string on failure.
+ */
+async function getImageContext(imageUrl) {
+    if (!imageUrl) return '';
+    
+    const apiKey = 'keysita_47JX47JX';
+    let effectiveImageUrl = imageUrl;
+
+    if (!/\.(jpg|jpeg|png|webp)$/i.test(imageUrl)) {
+        effectiveImageUrl += (imageUrl.includes('?') ? '&' : '?') + 'ext=.png';
+    }
+    
+    const apiUrl = `https://api.ferdev.my.id/tools/img2prompt?link=${encodeURIComponent(effectiveImageUrl)}&apikey=${apiKey}`;
+
+    try {
+        updateProgressOverlay("Analyzing image context...", "Menganalisis konteks gambar.");
+        const response = await fetch(apiUrl);
+        if (!response.ok) {
+            throw new Error(`Img2Prompt API request failed with status ${response.status}`);
+        }
+        const data = await response.json();
+        // Based on the example, the result is in the 'result' field
+        if (data.status && data.result) {
+            console.log("Img2Prompt Success:", data.result);
+            updateProgressOverlay("Image context analyzed", data.result);
+            return data.result;
+        }
+        throw new Error('Img2Prompt response did not contain a usable result field.');
+    } catch (error) {
+        console.error("Img2Prompt Error:", error);
+        updateProgressOverlay("Img2Prompt Error", error.message);
+        return '';
+    }
+}
+
+/**
+ * Calls an API to get a transcription from an audio URL.
+ * @param {string} audioUrl The URL of the audio to process.
+ * @returns {Promise<string>} A promise that resolves with the transcribed text, or an empty string on failure.
+ */
+async function getTextFromAudio(audioUrl) {
+    if (!audioUrl) return '';
+    
+    const apiKey = 'planaai';
+    const apiUrl = `https://www.sankavollerei.com/tools/audio-to-text?apikey=${apiKey}&url=${encodeURIComponent(audioUrl)}`;
+
+    try {
+        updateProgressOverlay("Transcribing audio...", "Mengubah audio menjadi teks.");
+        const response = await fetch(apiUrl);
+        if (!response.ok) {
+            throw new Error(`Audio-to-text API request failed with status ${response.status}`);
+        }
+        const data = await response.json();
+        // Based on the provided example, the transcribed text is in data.result.text
+        const transcribedText = data.result?.text || data.text || data.result;
+        if (transcribedText) {
+            console.log("Audio Transcription Success:", transcribedText);
+            updateProgressOverlay("Audio transcribed", transcribedText);
+            return transcribedText;
+        }
+        throw new Error('Audio-to-text response did not contain a usable text field.');
+    } catch (error) {
+        console.error("Audio-to-text Error:", error);
+        updateProgressOverlay("Audio-to-text Error", error.message);
+        return '';
+    }
+}
+
 function formatAiResponseForDisplay(text) {
   if (typeof text !== 'string') return text;
   return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -1218,15 +1289,34 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
     const questionTextElement = questionBlockElement.querySelector(profile.questionText);
     const questionText = (questionTextElement?.textContent || '').trim();
 
-    // --- OCR Integration ---
+    // --- Media Processing (Image & Audio) ---
     const imageElement = questionBlockElement.querySelector('img');
-    const imageUrl = imageElement ? imageElement.src : null;
-    const imageText = await getTextFromImage(imageUrl);
-    const fullQuestionText = (questionText + ' ' + imageText).trim();
-    // --- End OCR Integration ---
+    const imageUrl = imageElement?.src;
+    
+    const audioSourceElement = questionBlockElement.querySelector('audio > source');
+    const audioUrl = audioSourceElement?.src;
+
+    const [ocrText, imageContext, audioText] = await Promise.all([
+        getTextFromImage(imageUrl),
+        getImageContext(imageUrl),
+        getTextFromAudio(audioUrl)
+    ]);
+
+    let fullQuestionText = questionText;
+    if (ocrText) {
+        fullQuestionText += `\n\n[Text from image: ${ocrText}]`;
+    }
+    if (imageContext) {
+        fullQuestionText += `\n\n[Image description: ${imageContext}]`;
+    }
+    if (audioText) {
+        fullQuestionText += `\n\n[Transcript from audio: ${audioText}]`;
+    }
+    fullQuestionText = fullQuestionText.trim();
+    // --- End Media Processing ---
 
     if (!fullQuestionText) {
-      console.warn(`Question text or image content is empty for question ${index}. Skipping.`);
+      console.warn(`Question text or media content is empty for question ${index}. Skipping.`);
       return;
     }
 
@@ -1253,14 +1343,14 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
     }
 
     let aiAnswer = null;
+    const basePrompt = `Based on the following information, provide the best answer.\n\nQuestion: "${fullQuestionText}"`;
 
     if (detectedAnswerField.type === 'text_input') {
-        const inputElement = detectedAnswerField.element;
-        const prompt = `Provide a concise and appropriate answer for the following question: "${fullQuestionText}"`;
+        const prompt = `${basePrompt}\n\nRespond with only the answer text.`;
         updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
-        inputElement.value = aiAnswer;
-        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+        detectedAnswerField.element.value = aiAnswer;
+        detectedAnswerField.element.dispatchEvent(new Event('input', { bubbles: true }));
         finalizeHistoryEntry("answered (text input)", aiAnswer);
     } else if (detectedAnswerField.type === 'multiple_choice' || detectedAnswerField.type === 'checkbox_group') {
         const options = [];
@@ -1274,7 +1364,7 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
                 if (!labelText && el.parentElement) labelText = el.parentElement.textContent.trim();
                 if (!labelText && el.nextElementSibling) labelText = el.nextElementSibling.textContent.trim();
                 if (!labelText && el.previousElementSibling) labelText = el.previousElementSibling.textContent.trim();
-                if (!labelText && el.value && el.value.toLowerCase() !== 'on' && el.value.toLowerCase() !== '1' && el.value.toLowerCase() !== 'true') labelText = el.value;
+                if (!labelText && el.value && !['on', '1', 'true'].includes(el.value.toLowerCase())) labelText = el.value;
                 if (!labelText) labelText = el.id;
                 return labelText;
             })() });
@@ -1282,7 +1372,7 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
 
         if (options.length === 0) {
             console.warn(`No answer options found for question ${index}. Skipping.`);
-            finalizeHistoryEntry("no options", smartFillSession?.currentEntry?.answer || "");
+            finalizeHistoryEntry("no options", "");
             await addAnsweredQuestionHash(questionHash);
             return;
         }
@@ -1291,11 +1381,10 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
           smartFillSession.currentEntry.choices = options.map(opt => opt.label);
         }
 
-        const prompt = `Question: "${fullQuestionText}"\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option. Do not add any explanation.`;
+        const prompt = `${basePrompt}\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option.`;
         updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
         console.log("AI Answer received:", aiAnswer);
-        console.log("Comparing against options:", options.map(o => o.label));
         updateProgressOverlay("Matching AI response...", aiAnswer);
 
         const target = matchOption(options, aiAnswer);
@@ -1306,33 +1395,32 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
             finalizeHistoryEntry("no match", aiAnswer);
         }
     } else if (detectedAnswerField.type === 'single_checkbox') {
-        const checkboxElement = detectedAnswerField.element;
         const prompt = `Based on the question "${fullQuestionText}", should the checkbox be checked? Respond with only "YES" or "NO".`;
         updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
         if (aiAnswer.toLowerCase() === 'yes') {
-            checkboxElement.checked = true;
+            detectedAnswerField.element.checked = true;
             finalizeHistoryEntry("checked", "YES");
         } else {
-            checkboxElement.checked = false;
+            detectedAnswerField.element.checked = false;
             finalizeHistoryEntry("unchecked", "NO");
         }
-        checkboxElement.dispatchEvent(new Event('change', { bubbles: true }));
+        detectedAnswerField.element.dispatchEvent(new Event('change', { bubbles: true }));
     } else if (detectedAnswerField.type === 'dropdown') {
         const selectElement = detectedAnswerField.element;
         const options = Array.from(selectElement.options).map(opt => ({ element: opt, label: opt.textContent }));
         if (options.length === 0) {
             console.warn(`No options found for dropdown in question ${index}. Skipping.`);
-            finalizeHistoryEntry("no dropdown options", smartFillSession?.currentEntry?.answer || "");
+            finalizeHistoryEntry("no dropdown options", "");
             await addAnsweredQuestionHash(questionHash);
             return;
         }
 
         if (smartFillSession?.currentEntry) {
-            smartFillSession.currentEntry.choices = options.map(opt => opt.label);
+          smartFillSession.currentEntry.choices = options.map(opt => opt.label);
         }
 
-        const prompt = `Question: "${fullQuestionText}"\nDropdown Options: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct option? Respond with only the exact text of the best option. Do not add any explanation.`;
+        const prompt = `${basePrompt}\nDropdown Options: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct option? Respond with only the exact text of the best option.`;
         updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
         console.log("AI Answer received:", aiAnswer);
@@ -1348,7 +1436,7 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
         }
     } else {
         console.warn(`Unknown detected answer field type: ${detectedAnswerField.type} for question ${index}. Skipping.`);
-        finalizeHistoryEntry("unknown type", smartFillSession?.currentEntry?.answer || "");
+        finalizeHistoryEntry("unknown type", "");
     }
     
     await addAnsweredQuestionHash(questionHash);
@@ -1361,7 +1449,6 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
     if (smartFillSession) smartFillSession.stopRequested = true;
   }
 }
-
 
 function getOverlayPreference() {
   return new Promise(resolve => {
