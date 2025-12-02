@@ -395,6 +395,9 @@ async function callOpenAi(request, sendResponse, config) {
 let profileCreationState = {};
 
 async function verifyActivationWithBackend() {
+  // Trigger update check with cooldown.
+  checkForUpdates();
+
   // Check for a valid, non-expired cache entry first
   const { [LICENSE_CACHE_KEY]: cache } = await chrome.storage.local.get(LICENSE_CACHE_KEY);
   if (cache && (Date.now() - cache.timestamp < CACHE_DURATION_MS)) {
@@ -749,6 +752,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 const UPDATE_CHECK_ALARM_NAME = 'update-check-alarm';
 // IMPORTANT: User must replace this URL with the raw URL to their version.json on GitHub
 const VERSION_URL = 'https://raw.githubusercontent.com/RzkyNT/Auto-Fill-Form/main/version.json'; 
+const UPDATE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown for update checks triggered by activation
 
 async function compareVersions(versionA, versionB) {
   const partsA = versionA.split('.').map(Number);
@@ -764,29 +768,40 @@ async function compareVersions(versionA, versionB) {
 }
 
 async function checkForUpdates() {
+  const { lastUpdateCheckTimestamp } = await chrome.storage.local.get('lastUpdateCheckTimestamp');
+  const now = Date.now();
+
+  if (lastUpdateCheckTimestamp && (now - lastUpdateCheckTimestamp < UPDATE_COOLDOWN_MS)) {
+    console.log('Update checker: Cooldown period active. Skipping update check.');
+    return;
+  }
+
   console.log('Checking for extension updates...');
   
-  if (VERSION_URL.includes('USERNAME/REPONAME')) {
-    console.warn('Update checker: Please replace the placeholder VERSION_URL in background.js');
-    return;
+  if (VERSION_URL.includes('USERNAME/REPONAME')) { // This warning is now handled by the user's setup instructions.
+    // console.warn('Update checker: Please replace the placeholder VERSION_URL in background.js');
+    // return;
   }
 
   try {
     const response = await fetch(VERSION_URL, { cache: 'no-cache' });
     if (!response.ok) {
-      throw new Error("Failed to fetch version info: ");
+      throw new Error(`Failed to fetch version info: ${response.statusText}`);
     }
     const latest = await response.json();
     const currentVersion = chrome.runtime.getManifest().version;
 
     if (await compareVersions(latest.version, currentVersion) > 0) {
-      console.log("New version found: . Current version: ");
+      console.log(`New version found: ${latest.version}. Current version: ${currentVersion}`);
       showUpdateNotification(latest);
     } else {
       console.log('Extension is up to date.');
     }
   } catch (error) {
     console.error('Error checking for updates:', error);
+  } finally {
+    // Update the timestamp after the check, regardless of success or failure
+    await chrome.storage.local.set({ lastUpdateCheckTimestamp: now });
   }
 }
 
@@ -796,7 +811,7 @@ function showUpdateNotification(versionInfo) {
     type: 'basic',
     iconUrl: 'images/icon.png',
     title: 'Pembaruan Tersedia!',
-    message: "Versi baru  dari Smart Filler tersedia.",
+    message: `Versi baru ${versionInfo.version} dari Smart Filler tersedia.`,
     buttons: [{ title: 'Download di GitHub' }],
     priority: 2
   });
