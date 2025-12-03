@@ -471,9 +471,6 @@
       display: flex;
       justify-content: center;
     }
-    .api-key-input {
-      text-transform: uppercase;
-    }
 
     
             /* Universal Custom Checkbox Style */
@@ -517,6 +514,42 @@
             .custom-checkbox-container:hover .checkmark {
                 border-color: rgba(37, 211, 102, 0.6);
             }
+    .personal-data-row {
+      background: var(--color-surface-alt);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 10px;
+      border: 1px solid var(--color-border);
+      position: relative;
+    }
+    .personal-data-row label {
+      font-size: 0.8em;
+      font-weight: 600;
+      color: var(--color-muted);
+    }
+    .personal-data-row .api-key-input {
+      margin-top: 4px;
+      margin-bottom: 10px;
+    }
+    .personal-data-row .delete-field-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: transparent;
+      color: #ff6b7a;
+      border: none;
+      padding: 5px;
+      width: auto;
+      text-decoration: none;
+      font-size: 1.2em;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .personal-data-row .delete-field-btn:hover {
+        color: #fff;
+        background: rgba(255, 107, 122, 0.15);
+        border-radius: 50%;
+    }
   </style>
 </head>
 <body>
@@ -563,7 +596,35 @@
 
     <div id="features-view" class="view">
       <button id="fill">Fill with Random Data</button>
+      <button id="personal-fill">Fill with My Data</button>
       <button id="smart-fill">Smart Fill with AI</button>
+
+      <div class="settings-group">
+        <h4>Personalized Data & Rules</h4>
+        <p class="history-subhead">Define custom data fields and the keywords to trigger them.</p>
+        
+        <div id="personal-data-container">
+          <!-- Data fields will be dynamically inserted here by popup.js -->
+        </div>
+
+        <button id="add-personal-data-field" class="button-primary" style="margin-top: 15px; width: auto; padding: 8px 15px;">+ Add New Field</button>
+        <button id="save-personal-data" class="save-button">Save All Personal Data</button>
+
+        <h4 style="margin-top: 20px;">Personal Fill Mode</h4>
+        <p class="history-subhead">Choose how "Fill with My Data" matches fields with your personal data.</p>
+        <div class="provider-card" style="margin-top: 8px; padding-top: 5px; padding-bottom: 5px;">
+          <label>
+            <input type="radio" name="personal-fill-mode" value="direct" checked /> Direct Mode (Keyword Matching)
+          </label>
+          <p style="margin-top: 2px;">Fast matching based on keywords you define. No AI required.</p>
+        </div>
+        <div class="provider-card">
+          <label>
+            <input type="radio" name="personal-fill-mode" value="ai" /> AI Mode (Intelligent Matching)
+          </label>
+          <p style="margin-top: 2px;">Uses AI to intelligently determine which data matches each field. More accurate but slower.</p>
+        </div>
+      </div>
 
       <div id="current-activation-status" class="settings-group">
         <h4>Current License Status</h4>

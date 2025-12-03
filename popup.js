@@ -4,6 +4,7 @@ document.getElementById("activation-key-input").addEventListener("input", functi
 
 // --- Buttons ---
 document.getElementById("fill").addEventListener("click", () => triggerFill("fakeFiller:run"));
+document.getElementById("personal-fill").addEventListener("click", () => triggerFill("fakeFiller:personalFill"));
 document.getElementById("smart-fill").addEventListener("click", () => triggerFill("fakeFiller:smartFill"));
 
 async function triggerFill(eventName) {
@@ -78,7 +79,7 @@ async function sendColorUpdateToContentScript(elementId, color) {
 // Load all settings on popup open
 document.addEventListener("DOMContentLoaded", () => {
   console.log("Popup DOM loaded. Sending 'checkActivation' message to background script.");
-  
+
   // On popup open, always ask the background script for the current activation status
   chrome.runtime.sendMessage({ action: 'checkActivation' }, (response) => {
     if (chrome.runtime.lastError) {
@@ -87,21 +88,31 @@ document.addEventListener("DOMContentLoaded", () => {
       renderPopupUI(false, null);
       return;
     }
-    
+
     console.log("Popup: Received activation status from background:", response);
     renderPopupUI(response?.isActive || false, response?.licenseDetails || null);
   });
 
   // Load other non-activation-related settings from storage
-  chrome.storage.local.get(["autoRun", "fillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity"], (result) => { // Updated storage key
+  chrome.storage.local.get(["autoRun", "fillMode", "personalizedData", "personalFillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity"], (result) => { // Updated storage key
     autoRunCheckbox.checked = !!result.autoRun;
+
+    // Load and render Personalized Data
+    renderPersonalDataFields(result.personalizedData);
 
     const fillMode = result.fillMode || 'direct'; // Default to direct
     document.querySelectorAll('input[name="fill-mode"]').forEach(radio => {
       radio.checked = radio.value === fillMode;
     });
+
+    // Load Personal Fill Mode
+    const personalFillMode = result.personalFillMode || 'direct'; // Default to direct
+    document.querySelectorAll('input[name="personal-fill-mode"]').forEach(radio => {
+      radio.checked = radio.value === personalFillMode;
+    });
+
     console.log("[Popup.js] Loaded settings from storage:", result);
-    
+
     // Initialize Coloris for Trigger Button Background
     Coloris({
       el: '#trigger-button-bg-color',
@@ -179,8 +190,8 @@ document.getElementById("save-ui-settings").addEventListener("click", () => {
   const triggerIconSpanColor = document.getElementById("trigger-icon-span-color").value;
   const triggerButtonOpacity = parseInt(triggerButtonOpacityInput.value); // Corrected source and variable name
 
-  chrome.storage.local.set({ 
-    triggerButtonBgColor: triggerButtonBgColor, 
+  chrome.storage.local.set({
+    triggerButtonBgColor: triggerButtonBgColor,
     triggerIconSpanColor: triggerIconSpanColor,
     triggerButtonOpacity: triggerButtonOpacity // Corrected storage key
   }, () => {
@@ -202,6 +213,15 @@ document.querySelectorAll('input[name="fill-mode"]').forEach(radio => {
   radio.addEventListener("change", () => {
     if (radio.checked) {
       chrome.storage.local.set({ fillMode: radio.value });
+    }
+  });
+});
+
+// Save Personal Fill Mode setting
+document.querySelectorAll('input[name="personal-fill-mode"]').forEach(radio => {
+  radio.addEventListener("change", () => {
+    if (radio.checked) {
+      chrome.storage.local.set({ personalFillMode: radio.value });
     }
   });
 });
@@ -240,10 +260,10 @@ function renderPopupUI(isActivated, licenseDetails) {
 
     // NEW: Update current activation status display
     chrome.storage.local.get(["activationKey"], (result) => { // Get the stored key
-        displayActivationKey.textContent = result.activationKey || 'N/A';
-        displayLicenseStatus.textContent = 'Active'; // Always active if this branch is hit
-        displayLicenseDetails.textContent = licenseDetails || 'Full';
-        deactivateExtensionButton.classList.remove("hidden"); // Show deactivate button
+      displayActivationKey.textContent = result.activationKey || 'N/A';
+      displayLicenseStatus.textContent = 'Active'; // Always active if this branch is hit
+      displayLicenseDetails.textContent = licenseDetails || 'Full';
+      deactivateExtensionButton.classList.remove("hidden"); // Show deactivate button
     });
 
   } else {
@@ -275,7 +295,7 @@ function renderPopupUI(isActivated, licenseDetails) {
 saveKeysButton.addEventListener("click", () => {
   const keysString = apiKeysTextarea.value;
   const keys = keysString.split('\n').map(k => k.trim()).filter(Boolean);
-  
+
   const apiKeys = keys.map(key => ({
     key: key,
     cooldownUntil: 0,
@@ -290,7 +310,7 @@ saveKeysButton.addEventListener("click", () => {
 });
 
 // Save OpenAI settings
-saveOpenAiButton.addEventListener("click", () => {
+document.getElementById("save-openai").addEventListener("click", () => {
   const config = {
     baseUrl: openAiBaseUrlInput.value.trim(),
     endpoint: openAiEndpointInput.value.trim(),
@@ -302,6 +322,76 @@ saveOpenAiButton.addEventListener("click", () => {
     saveOpenAiButton.textContent = "Saved!";
     setTimeout(() => {
       saveOpenAiButton.textContent = "Save OpenAI Settings";
+    }, 1500);
+  });
+});
+
+// --- Personalized Data Dynamic Logic ---
+
+const personalDataContainer = document.getElementById('personal-data-container');
+const addFieldButton = document.getElementById('add-personal-data-field');
+const saveAllButton = document.getElementById('save-personal-data');
+
+function createPersonalDataRow(item = { key: '', value: '', keywords: '' }) {
+  const row = document.createElement('div');
+  row.className = 'personal-data-row';
+
+  // Use an "x" for the delete button for a cleaner look
+  row.innerHTML = `
+        <button type="button" class="delete-field-btn" title="Delete Field">&times;</button>
+        <label>Data Key</label>
+        <input class="api-key-input personal-data-key" type="text" placeholder="e.g., Email Address" value="${item.key}">
+        
+        <label>Data Value</label>
+        <input class="api-key-input personal-data-value" type="text" placeholder="e.g., your.email@example.com" value="${item.value}">
+        
+        <label>Matching Keywords (comma-separated)</label>
+        <input class="api-key-input personal-data-keywords" type="text" placeholder="e.g., email, e-mail, email_address" value="${item.keywords}">
+    `;
+
+  row.querySelector('.delete-field-btn').addEventListener('click', () => {
+    row.remove();
+  });
+
+  return row;
+}
+
+function renderPersonalDataFields(data = []) {
+  personalDataContainer.innerHTML = '';
+  // Provide some default fields for first-time users or if data is empty
+  if (!data || data.length === 0) {
+    data = [
+      { key: 'Full Name', value: '', keywords: 'name, fullname, nama, fname, lname' },
+      { key: 'Email Address', value: '', keywords: 'email, e-mail' }
+    ];
+  }
+  data.forEach(item => {
+    personalDataContainer.appendChild(createPersonalDataRow(item));
+  });
+}
+
+addFieldButton.addEventListener('click', () => {
+  personalDataContainer.appendChild(createPersonalDataRow());
+});
+
+saveAllButton.addEventListener('click', () => {
+  const allRows = personalDataContainer.querySelectorAll('.personal-data-row');
+  const dataToSave = [];
+
+  allRows.forEach(row => {
+    const key = row.querySelector('.personal-data-key').value.trim();
+    const value = row.querySelector('.personal-data-value').value.trim();
+    const keywords = row.querySelector('.personal-data-keywords').value.trim();
+
+    if (key) { // Only save if a key is provided
+      dataToSave.push({ key, value, keywords });
+    }
+  });
+
+  chrome.storage.local.set({ personalizedData: dataToSave }, () => {
+    saveAllButton.textContent = "Saved!";
+    setTimeout(() => {
+      saveAllButton.textContent = "Save All Personal Data";
     }, 1500);
   });
 });
@@ -360,23 +450,23 @@ resetSessionButton.addEventListener("click", () => {
   });
 });
 
-  activateExtensionButton.addEventListener("click", async () => {
-    const activationKey = activationKeyInput.value.trim();
-    if (!activationKey) {
-      Swal.fire({
-        title: 'Error',
-        text: 'Please enter an activation key.',
-        icon: 'error',
-        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
-        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
-      });
-      return;
-    }
+activateExtensionButton.addEventListener("click", async () => {
+  const activationKey = activationKeyInput.value.trim();
+  if (!activationKey) {
+    Swal.fire({
+      title: 'Error',
+      text: 'Please enter an activation key.',
+      icon: 'error',
+      background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+      color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+    });
+    return;
+  }
 
-    activationStatusDiv.innerHTML = `Activating...`;
-    activateExtensionButton.disabled = true;
+  activationStatusDiv.innerHTML = `Activating...`;
+  activateExtensionButton.disabled = true;
 
-    chrome.runtime.sendMessage(
+  chrome.runtime.sendMessage(
     {
       action: 'activateExtension',
       activationKey: activationKey
@@ -414,8 +504,8 @@ resetSessionButton.addEventListener("click", () => {
     }
   ); // ← ini penting!
 
-    activateExtensionButton.disabled = false;
-  });
+  activateExtensionButton.disabled = false;
+});
 
 // Deactivate Extension button listener
 deactivateExtensionButton.addEventListener("click", async () => {
@@ -447,27 +537,27 @@ deactivateExtensionButton.addEventListener("click", async () => {
 
 // New helper function to process activation response and update UI
 function processActivationResponse(response) {
-    if (response.success) {
-      Swal.fire({
-        title: 'Success!',
-        text: 'Extension activated successfully. The popup will now reload.',
-        icon: 'success',
-        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
-        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
-      }).then(() => {
-        location.reload(); // Reload to reflect the new state fetched from backend
-      });
-    } else {
-      renderPopupUI(false, null); // Keep this for immediate feedback on failure
-      activationStatusDiv.innerHTML = `<span style="color: #ff6b7a;">Activation Failed: ${response.message || 'Invalid key or server error.'}</span>`;
-      Swal.fire({
-        title: 'Activation Failed',
-        text: response.message || 'Invalid key or server error.',
-        icon: 'error',
-        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
-        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
-      });
-    }
+  if (response.success) {
+    Swal.fire({
+      title: 'Success!',
+      text: 'Extension activated successfully. The popup will now reload.',
+      icon: 'success',
+      background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+      color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+    }).then(() => {
+      location.reload(); // Reload to reflect the new state fetched from backend
+    });
+  } else {
+    renderPopupUI(false, null); // Keep this for immediate feedback on failure
+    activationStatusDiv.innerHTML = `<span style="color: #ff6b7a;">Activation Failed: ${response.message || 'Invalid key or server error.'}</span>`;
+    Swal.fire({
+      title: 'Activation Failed',
+      text: response.message || 'Invalid key or server error.',
+      icon: 'error',
+      background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+      color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+    });
+  }
 }
 manageProfilesButton.addEventListener('click', () => {
   showView(profilesView);
@@ -562,9 +652,9 @@ profilesList.addEventListener('click', (e) => {
 const openTestProfileButton = document.getElementById("open-test-profile");
 if (openTestProfileButton) {
   openTestProfileButton.addEventListener("click", () => {
-chrome.tabs.create({
-  url: "https://rizqiahsansetiawan.ct.ws/ext/test_profile.html"
-});
+    chrome.tabs.create({
+      url: "https://rizqiahsansetiawan.ct.ws/ext/test_profile.html"
+    });
   });
 }
 
@@ -581,7 +671,7 @@ addNewProfileButton.addEventListener('click', async () => {
     });
     return;
   }
-  
+
   if (tab.url.startsWith('chrome://')) {
     Swal.fire({
       title: 'Error',
@@ -629,16 +719,16 @@ async function editProfile(hostname) {
     });
     return;
   }
-  
+
   if (new URL(tab.url).hostname !== hostname) {
-      Swal.fire({
-          title: 'Error',
-          text: `Cannot edit this profile. You are currently on ${new URL(tab.url).hostname}, but the profile is for ${hostname}. Please navigate to the correct website to edit its profile.`,
-          icon: 'error',
-          background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
-          color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
-      });
-      return;
+    Swal.fire({
+      title: 'Error',
+      text: `Cannot edit this profile. You are currently on ${new URL(tab.url).hostname}, but the profile is for ${hostname}. Please navigate to the correct website to edit its profile.`,
+      icon: 'error',
+      background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+      color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+    });
+    return;
   }
 
   const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
@@ -667,20 +757,20 @@ async function editProfile(hostname) {
 
 function startElementSelection(tabId, options) {
   return new Promise((resolve, reject) => {
-      // Send a message to the content script to start selection mode
-      chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: options }, (response) => {
-          if (chrome.runtime.lastError) {
-              return reject(new Error('Could not connect to the page. Please reload the tab and try again.'));
-          }
-          if (response.error) {
-              return reject(new Error(response.error));
-          }
-          if(response.selector || response.selectors) {
-              resolve(response.selector || response.selectors);
-          } else {
-              reject(new Error('Selection was cancelled or failed.'));
-          }
-      });
+    // Send a message to the content script to start selection mode
+    chrome.tabs.sendMessage(tabId, { action: 'startSelection', options: options }, (response) => {
+      if (chrome.runtime.lastError) {
+        return reject(new Error('Could not connect to the page. Please reload the tab and try again.'));
+      }
+      if (response.error) {
+        return reject(new Error(response.error));
+      }
+      if (response.selector || response.selectors) {
+        resolve(response.selector || response.selectors);
+      } else {
+        reject(new Error('Selection was cancelled or failed.'));
+      }
+    });
   });
 }
 
@@ -724,7 +814,7 @@ document.getElementById('import-file-input').addEventListener('change', async (e
       if (typeof importedProfiles !== 'object' || Array.isArray(importedProfiles)) {
         throw new Error('Invalid JSON format. Expected an object.');
       }
-      
+
       // Basic validation: check if imported profiles have expected structure keys
       for (const hostname in importedProfiles) {
         const profile = importedProfiles[hostname];
@@ -734,7 +824,7 @@ document.getElementById('import-file-input').addEventListener('change', async (e
       }
 
       const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
-      
+
       const confirmResult = await Swal.fire({
         title: 'Import Profiles',
         html: `Do you want to merge these profiles with your existing ones?
