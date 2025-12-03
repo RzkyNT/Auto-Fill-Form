@@ -61,6 +61,18 @@ const backToSettingsButton = document.getElementById('back-to-settings');
 const profilesList = document.getElementById('profiles-list');
 const addNewProfileButton = document.getElementById('add-new-profile');
 
+async function sendColorUpdateToContentScript(elementId, color) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab && tab.id) {
+    chrome.tabs.sendMessage(tab.id, {
+      action: 'updateColor',
+      elementId: elementId,
+      color: color
+    }).catch(error => console.warn("Could not send color update to content script:", error));
+  }
+}
+
+
 // Load all settings on popup open
 document.addEventListener("DOMContentLoaded", () => {
   console.log("Popup DOM loaded. Sending 'checkActivation' message to background script.");
@@ -92,7 +104,11 @@ document.addEventListener("DOMContentLoaded", () => {
       formatToggle: false,
       swatches: [
         '#EDE1FF', '#25D366', '#FF6B7A', '#FFD700', '#ADD8E6', '#90EE90'
-      ]
+      ],
+      eyedropper: true, // Enable eyedropper
+      onChange: (color) => { // Real-time update
+        sendColorUpdateToContentScript('trigger-button-bg-color', color);
+      }
     });
     document.getElementById("trigger-button-bg-color").value = result.triggerButtonBgColor || '#EDE1FF';
     document.getElementById("trigger-button-bg-color").dispatchEvent(new Event('input')); // Trigger Coloris update
@@ -107,7 +123,11 @@ document.addEventListener("DOMContentLoaded", () => {
       formatToggle: false,
       swatches: [
         '#5E3BAE', '#000000', '#FFFFFF', '#FF6347', '#4682B4', '#DAA520'
-      ]
+      ],
+      eyedropper: true, // Enable eyedropper
+      onChange: (color) => { // Real-time update
+        sendColorUpdateToContentScript('trigger-icon-span-color', color);
+      }
     });
     document.getElementById("trigger-icon-span-color").value = result.triggerIconSpanColor || '#5E3BAE';
     document.getElementById("trigger-icon-span-color").dispatchEvent(new Event('input')); // Trigger Coloris update
@@ -145,7 +165,7 @@ document.addEventListener("DOMContentLoaded", () => {
 document.getElementById("save-ui-settings").addEventListener("click", () => {
   const triggerButtonBgColor = document.getElementById("trigger-button-bg-color").value;
   const triggerIconSpanColor = document.getElementById("trigger-icon-span-color").value;
-  chrome.storage.sync.set({ triggerButtonBgColor: triggerButtonBgColor, triggerIconSpanColor: triggerIconSpanColor }, () => {
+  chrome.storage.local.set({ triggerButtonBgColor: triggerButtonBgColor, triggerIconSpanColor: triggerIconSpanColor }, () => {
     const saveButton = document.getElementById("save-ui-settings");
     saveButton.textContent = "Saved!";
     setTimeout(() => {

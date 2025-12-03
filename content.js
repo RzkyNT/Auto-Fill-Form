@@ -5,9 +5,18 @@ if (window.hasRunContentScript) {
   initContentScript(); // <== jalankan semua logic di sini
 }
 function initContentScript() {
-// --- Message Listener ---
-// The main listener is updated to route to the new guided profile creation mode.
+// --- Message Listener for real-time color updates from popup ---
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'updateColor') {
+    if (request.elementId === 'trigger-button-bg-color') {
+      document.documentElement.style.setProperty('--trigger-button-background-color', request.color);
+    } else if (request.elementId === 'trigger-icon-span-color') {
+      document.documentElement.style.setProperty('--trigger-icon-span-background-color', request.color);
+    }
+    sendResponse({ status: 'color updated' });
+    return true; // Indicate that response will be sent asynchronously
+  }
+  // --- Original Message Listener ---
   if (request.action === 'showContentToast' && request.toast) {
     showContentToast(request.toast.title, request.toast.icon);
     sendResponse({ status: 'ok' });
@@ -16,8 +25,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     startGuidedProfileCreation(request.existingProfile, request.hostname); 
     sendResponse({ status: 'guided_selection_started' });
   }
-  // It's crucial to return true if you intend to send a response asynchronously,
-  // although in this refactored version, most responses are simple acknowledgements.
   return true; 
 });
 
@@ -95,7 +102,7 @@ async function showToast(icon, title, timer = 3000) {
 }
 
 window.addEventListener('load', async () => {
-  chrome.storage.sync.get(["autoRun"], (result) => {
+  chrome.storage.local.get(["autoRun"], (result) => {
     if (result.autoRun) {
       setTimeout(doFakeFill, 500);
     }
@@ -599,15 +606,6 @@ function updateProgressBar(ratio) {
   fill.style.width = `${percent}%`;
 }
 
-function updateProgressBar(ratio) {
-  const overlay = document.getElementById("fake-filler-overlay");
-  if (!overlay) return;
-  const fill = overlay.querySelector(".progress-fill");
-  if (!fill) return;
-  const percent = Math.min(100, Math.max(0, ratio * 100));
-  fill.style.width = `${percent}%`;
-}
-
 function startHistoryEntry(questionText, platform) {
   if (!smartFillSession) return;
   smartFillSession.currentEntry = {
@@ -828,7 +826,7 @@ async function createTriggerOverlay() {
   if (document.getElementById('smart-fill-trigger-container')) return;
 
   // Retrieve custom colors from storage
-  const { triggerButtonBgColor = '#EDE1FF', triggerIconSpanColor = '#5E3BAE' } = await chrome.storage.sync.get(['triggerButtonBgColor', 'triggerIconSpanColor']);
+  const { triggerButtonBgColor = '#EDE1FF', triggerIconSpanColor = '#5E3BAE' } = await chrome.storage.local.get(['triggerButtonBgColor', 'triggerIconSpanColor']);
 
   // New icon for toggling the progress overlay
   const progressOverlayIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M200-200v-560h560v560H200Zm0 80h560q33 0 56.5-23.5T840-200v-560q0-33-23.5-56.5T760-840H200q-33 0-56.5 23.5T80-760v560q0 33 23.5 56.5T200-120Zm80-80h400v-400H280v400Zm-80 0v-560 560Z"/></svg>`;
