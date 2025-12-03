@@ -64,14 +64,24 @@ const profilesList = document.getElementById('profiles-list');
 const addNewProfileButton = document.getElementById('add-new-profile');
 
 async function sendColorUpdateToContentScript(elementId, color) {
-  console.log(`[Popup.js] Sending color update: elementId=${elementId}, color=${color}`); // Debug log
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab && tab.id) {
-    chrome.tabs.sendMessage(tab.id, {
+  console.log(`[Popup.js] Sending color update: elementId=${elementId}, color=${color}`);
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    // Check if tab exists and is a valid URL (not chrome:// or extension pages)
+    if (!tab || !tab.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+      console.log('[Popup.js] Skipping color update - no valid tab or content script not applicable');
+      return;
+    }
+
+    await chrome.tabs.sendMessage(tab.id, {
       action: 'updateColor',
       elementId: elementId,
       color: color
-    }).catch(error => console.error("[Popup.js] Error sending color update to content script:", error));
+    });
+  } catch (error) {
+    // Silently fail if content script is not loaded - this is expected behavior
+    console.log('[Popup.js] Content script not loaded on this page (expected for some pages)');
   }
 }
 
@@ -411,13 +421,23 @@ triggerButtonOpacityInput.addEventListener("input", () => {
 
 // Repurposed function for trigger button opacity
 async function sendTriggerButtonOpacityUpdateToContentScript(opacity) {
-  console.log(`[Popup.js] Sending opacity update: opacity=${opacity}`); // Debug log
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab && tab.id) {
-    chrome.tabs.sendMessage(tab.id, {
-      action: 'updateTriggerButtonOpacity', // New action name for content script
+  console.log(`[Popup.js] Sending opacity update: opacity=${opacity}`);
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    // Check if tab exists and is a valid URL (not chrome:// or extension pages)
+    if (!tab || !tab.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+      console.log('[Popup.js] Skipping opacity update - no valid tab or content script not applicable');
+      return;
+    }
+
+    await chrome.tabs.sendMessage(tab.id, {
+      action: 'updateTriggerButtonOpacity',
       opacity: opacity
-    }).catch(error => console.error("[Popup.js] Error sending trigger button opacity update to content script:", error));
+    });
+  } catch (error) {
+    // Silently fail if content script is not loaded - this is expected behavior
+    console.log('[Popup.js] Content script not loaded on this page (expected for some pages)');
   }
 }
 

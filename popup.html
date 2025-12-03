@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>Smart Filler</title>
@@ -19,13 +20,16 @@
       --color-input-border: rgba(255, 255, 255, 0.12);
       --color-shadow: 0 25px 70px rgba(0, 0, 0, 0.65);
     }
+
     /* Coloris.js specific styles for better dark mode compatibility */
-    body.light .clr-picker, body.light .clr-field {
+    body.light .clr-picker,
+    body.light .clr-field {
       --clr-background: var(--color-surface) !important;
       --clr-alt-background: var(--color-surface-alt) !important;
       --clr-border: var(--color-input-border) !important;
       --clr-font-color: var(--color-text) !important;
     }
+
     .clr-picker {
       --clr-background: var(--color-surface) !important;
       --clr-alt-background: var(--color-surface-alt) !important;
@@ -45,9 +49,11 @@
       color: var(--color-text);
       transition: border-color 0.3s, box-shadow 0.3s;
     }
+
     .clr-field:hover {
       border-color: var(--color-accent);
     }
+
     .clr-field::before {
       border-color: var(--color-input-border) !important;
       box-shadow: none !important;
@@ -58,8 +64,10 @@
       transform: translateY(-50%) !important;
       left: 10px !important;
     }
+
     .clr-field input {
-      padding-left: 45px !important; /* Adjust text position */
+      padding-left: 45px !important;
+      /* Adjust text position */
     }
 
 
@@ -74,16 +82,21 @@
       --color-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      width:100%;
+      width: 100%;
       min-width: 320px;
       padding: 22px;
       background: var(--color-bg);
       color: var(--color-text);
-      overflow-x: hidden; /* Prevent horizontal scroll during view transitions */
+      overflow-x: hidden;
+      /* Prevent horizontal scroll during view transitions */
     }
 
     /* Multi-view management */
@@ -162,6 +175,99 @@
       box-shadow: 0 18px 36px rgba(37, 211, 102, 0.45);
     }
 
+    /* Quick Actions Container */
+    .quick-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    /* Accordion/Collapsible Sections */
+    .settings-accordion {
+      margin-top: 12px;
+      background: var(--color-surface);
+      border-radius: 14px;
+      border: 1px solid var(--color-border);
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .settings-accordion:hover {
+      border-color: rgba(37, 211, 102, 0.3);
+    }
+
+    .settings-accordion[open] {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .settings-accordion-header {
+      padding: 16px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+      background: var(--color-surface);
+      transition: background 0.2s ease;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .settings-accordion-header:hover {
+      background: var(--color-surface-alt);
+    }
+
+    .accordion-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .accordion-icon {
+      flex-shrink: 0;
+      color: var(--color-accent);
+      transition: transform 0.3s ease, color 0.3s ease;
+    }
+
+    .settings-accordion-header:hover .accordion-icon {
+      transform: scale(1.1);
+      color: var(--color-accent-alt);
+    }
+
+    .settings-accordion-header::after {
+      content: '▼';
+      font-size: 0.8em;
+      color: var(--color-muted);
+      transition: transform 0.3s ease;
+    }
+
+    .settings-accordion[open] .settings-accordion-header::after {
+      transform: rotate(180deg);
+    }
+
+    .settings-accordion-header::-webkit-details-marker {
+      display: none;
+    }
+
+    .settings-accordion-content {
+      padding: 0 16px 16px 16px;
+      animation: slideDown 0.3s ease;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
     .settings-group {
       margin-top: 20px;
       padding: 16px;
@@ -219,7 +325,7 @@
     .api-key-input:focus {
       border-color: var(--color-accent);
       outline: none;
-      box-shadow: 0 0 0 2px rgba(37,211,102,0.25);
+      box-shadow: 0 0 0 2px rgba(37, 211, 102, 0.25);
     }
 
     .save-button {
@@ -235,11 +341,13 @@
     }
 
     .history-group {
-      max-height: none; /* Allow it to grow */
+      max-height: none;
+      /* Allow it to grow */
     }
 
     .history-list {
-      max-height: 350px; /* Set max height for the container */
+      max-height: 350px;
+      /* Set max height for the container */
       overflow-y: auto;
       padding: 0;
       margin: 0;
@@ -247,42 +355,49 @@
       border-radius: 12px;
       background: var(--color-surface);
     }
-    
+
     .history-clear {
       background: transparent;
       color: #ff6b7a;
-      border: 1px solid rgba(255,107,122,0.6);
+      border: 1px solid rgba(255, 107, 122, 0.6);
       box-shadow: none;
     }
 
     .history-clear:hover {
-      background: rgba(255,107,122,0.12);
+      background: rgba(255, 107, 122, 0.12);
     }
-    
+
     /* New History Card Styles */
     .history-group-card {
       background: var(--color-surface);
       border-bottom: 1px solid var(--color-border);
     }
+
     .history-group-card:last-child {
       border-bottom: none;
     }
-    .history-group-card[open] > .history-group-summary {
+
+    .history-group-card[open]>.history-group-summary {
       border-bottom: 1px solid var(--color-border);
       background-color: var(--color-surface-alt);
     }
+
     .history-group-summary {
       padding: 14px;
       font-weight: 600;
       cursor: pointer;
-      list-style: none; /* Remove default marker */
+      list-style: none;
+      /* Remove default marker */
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
+
     .history-group-summary::-webkit-details-marker {
-      display: none; /* Hide for Safari */
+      display: none;
+      /* Hide for Safari */
     }
+
     .history-group-summary::after {
       content: '+';
       font-size: 1.2em;
@@ -290,37 +405,46 @@
       transition: transform 0.2s ease;
       color: var(--color-muted);
     }
-    .history-group-card[open] > .history-group-summary::after {
+
+    .history-group-card[open]>.history-group-summary::after {
       transform: rotate(45deg);
     }
+
     .history-table-container {
       padding: 0;
       max-height: 220px;
       overflow-y: auto;
     }
+
     .history-table-container table {
       width: 100%;
       border-collapse: collapse;
       font-size: 0.8em;
     }
-    .history-table-container th, .history-table-container td {
+
+    .history-table-container th,
+    .history-table-container td {
       padding: 8px 12px;
       text-align: left;
       border-bottom: 1px solid var(--color-border);
     }
+
     .history-table-container th {
       background-color: var(--color-surface-alt);
       font-weight: 600;
       position: sticky;
       top: 0;
     }
+
     .history-table-container td {
       color: var(--color-muted);
       word-break: break-word;
     }
+
     .history-table-container tr:last-child td {
       border-bottom: none;
     }
+
     .history-empty {
       padding: 20px;
       text-align: center;
@@ -348,12 +472,13 @@
       transition: background-color 0.3s ease;
       background-color: var(--color-surface-alt);
       cursor: pointer;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
     }
 
     .switch:hover {
       background-color: var(--color-accent);
     }
+
     .switch:hover .theme-icon svg {
       color: #04070D;
     }
@@ -387,11 +512,13 @@
       opacity: 1;
       transform: scale(1);
     }
-    .switch input[type="checkbox"]:checked ~ .theme-icon #theme-icon-light {
+
+    .switch input[type="checkbox"]:checked~.theme-icon #theme-icon-light {
       opacity: 0;
       transform: scale(0.8);
     }
-    .switch input[type="checkbox"]:checked ~ .theme-icon #theme-icon-dark {
+
+    .switch input[type="checkbox"]:checked~.theme-icon #theme-icon-dark {
       opacity: 1;
       transform: scale(1);
     }
@@ -418,35 +545,35 @@
 
     /* Profiles View Specific Styles (copied from profiles.html) */
     .profile-card {
-        background: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: 14px;
-        padding: 16px;
-        margin-bottom: 12px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
-    
+
     .profile-card .hostname {
-        font-weight: bold;
-        font-size: 1.1em;
+      font-weight: bold;
+      font-size: 1.1em;
     }
 
     .profile-card .actions button {
-        margin-left: 10px;
-        padding: 8px 12px;
+      margin-left: 10px;
+      padding: 8px 12px;
     }
-    
+
     .button-primary {
       background: var(--color-accent);
       color: #04070D;
     }
 
     .button-danger {
-        background: transparent;
-        color: #ff6b7a;
-        border: 1px solid rgba(255,107,122,0.6);
+      background: transparent;
+      color: #ff6b7a;
+      border: 1px solid rgba(255, 107, 122, 0.6);
     }
 
     .back-button {
@@ -463,57 +590,66 @@
     }
 
     .profiles-list {
-        list-style: none;
-        margin-bottom: 20px;
+      list-style: none;
+      margin-bottom: 20px;
     }
+
     .center-dev {
       margin-top: 10px;
       display: flex;
       justify-content: center;
     }
 
-    
-            /* Universal Custom Checkbox Style */
-            .custom-checkbox-container {
-                display: inline-flex;
-                align-items: center;
-                cursor: pointer;
-                gap: 8px;
-                -webkit-user-select: none; user-select: none;
-            }
-            .custom-checkbox-container input[type="checkbox"] {
-                display: none;
-            }
-            .custom-checkbox-container .checkmark {
-                width: 18px;
-                height: 18px;
-                background-color: #11161C;
-                border: 2px solid rgba(255, 255, 255, 0.25);
-                border-radius: 4px;
-                transition: all 0.2s ease;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .custom-checkbox-container .checkmark::after {
-                content: '';
-                display: none;
-                width: 5px;
-                height: 10px;
-                border: solid #0B0F14;
-                border-width: 0 3px 3px 0;
-                transform: rotate(45deg) translate(-1px, -1px);
-            }
-            .custom-checkbox-container input[type="checkbox"]:checked ~ .checkmark {
-                background-color: #25D366;
-                border-color: #25D366;
-            }
-            .custom-checkbox-container input[type="checkbox"]:checked ~ .checkmark::after {
-                display: block;
-            }
-            .custom-checkbox-container:hover .checkmark {
-                border-color: rgba(37, 211, 102, 0.6);
-            }
+
+    /* Universal Custom Checkbox Style */
+    .custom-checkbox-container {
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+      gap: 8px;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .custom-checkbox-container input[type="checkbox"] {
+      display: none;
+    }
+
+    .custom-checkbox-container .checkmark {
+      width: 18px;
+      height: 18px;
+      background-color: #11161C;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      border-radius: 4px;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .custom-checkbox-container .checkmark::after {
+      content: '';
+      display: none;
+      width: 5px;
+      height: 10px;
+      border: solid #0B0F14;
+      border-width: 0 3px 3px 0;
+      transform: rotate(45deg) translate(-1px, -1px);
+    }
+
+    .custom-checkbox-container input[type="checkbox"]:checked~.checkmark {
+      background-color: #25D366;
+      border-color: #25D366;
+    }
+
+    .custom-checkbox-container input[type="checkbox"]:checked~.checkmark::after {
+      display: block;
+    }
+
+    .custom-checkbox-container:hover .checkmark {
+      border-color: rgba(37, 211, 102, 0.6);
+    }
+
     .personal-data-row {
       background: var(--color-surface-alt);
       border-radius: 10px;
@@ -522,15 +658,18 @@
       border: 1px solid var(--color-border);
       position: relative;
     }
+
     .personal-data-row label {
       font-size: 0.8em;
       font-weight: 600;
       color: var(--color-muted);
     }
+
     .personal-data-row .api-key-input {
       margin-top: 4px;
       margin-bottom: 10px;
     }
+
     .personal-data-row .delete-field-btn {
       position: absolute;
       top: 10px;
@@ -545,13 +684,15 @@
       line-height: 1;
       cursor: pointer;
     }
+
     .personal-data-row .delete-field-btn:hover {
-        color: #fff;
-        background: rgba(255, 107, 122, 0.15);
-        border-radius: 50%;
+      color: #fff;
+      background: rgba(255, 107, 122, 0.15);
+      border-radius: 50%;
     }
   </style>
 </head>
+
 <body>
   <div id="main-view" class="view active">
     <!-- Header is always visible -->
@@ -561,85 +702,107 @@
         <p class="subhead">Auto-fill forms with Gemini or OpenAI intelligence.</p>
       </div>
       <label class="switch" id="theme-toggle-label">
-      <input type="checkbox" id="dark-mode-toggle" />
-      <div class="theme-icon">
-        <svg id="theme-icon-light" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
-        </svg>
-        <svg id="theme-icon-dark" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="4"/>
-          <path d="M12 2v2"/>
-          <path d="M12 20v2"/>
-          <path d="m4.93 4.93 1.41 1.41"/>
-          <path d="m17.66 17.66 1.41 1.41"/>
-          <path d="M2 12h2"/>
-          <path d="M20 12h2"/>
-          <path d="m6.34 17.66-1.41 1.41"/>
-          <path d="m19.07 4.93-1.41 1.41"/>
-        </svg>
-      </div>
-    </label>
+        <input type="checkbox" id="dark-mode-toggle" />
+        <div class="theme-icon">
+          <svg id="theme-icon-light" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+          </svg>
+          <svg id="theme-icon-dark" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2" />
+            <path d="M12 20v2" />
+            <path d="m4.93 4.93 1.41 1.41" />
+            <path d="m17.66 17.66 1.41 1.41" />
+            <path d="M2 12h2" />
+            <path d="M20 12h2" />
+            <path d="m6.34 17.66-1.41 1.41" />
+            <path d="m19.07 4.93-1.41 1.41" />
+          </svg>
+        </div>
+      </label>
     </div>
 
     <div id="activation-view" class="view">
       <div id="activation-settings" class="settings-group">
         <h4>Extension Activation</h4>
         <p class="history-subhead">Enter your activation key to unlock full features.</p>
-        <input id="activation-key-input"
-        class="api-key-input"
-        type="text"
-        placeholder="Enter activation key here" />
+        <input id="activation-key-input" class="api-key-input" type="text" placeholder="Enter activation key here" />
         <button id="activate-extension" class="save-button">Activate Extension</button>
         <div id="activation-status" style="margin-top: 10px; font-size: 0.9em;"></div>
       </div>
     </div>
 
     <div id="features-view" class="view">
-      <button id="fill">Fill with Random Data</button>
-      <button id="personal-fill">Fill with My Data</button>
-      <button id="smart-fill">Smart Fill with AI</button>
-
-      <div class="settings-group">
-        <h4>Personalized Data & Rules</h4>
-        <p class="history-subhead">Define custom data fields and the keywords to trigger them.</p>
-        
-        <div id="personal-data-container">
-          <!-- Data fields will be dynamically inserted here by popup.js -->
-        </div>
-
-        <button id="add-personal-data-field" class="button-primary" style="margin-top: 15px; width: auto; padding: 8px 15px;">+ Add New Field</button>
-        <button id="save-personal-data" class="save-button">Save All Personal Data</button>
-
-        <h4 style="margin-top: 20px;">Personal Fill Mode</h4>
-        <p class="history-subhead">Choose how "Fill with My Data" matches fields with your personal data.</p>
-        <div class="provider-card" style="margin-top: 8px; padding-top: 5px; padding-bottom: 5px;">
-          <label>
-            <input type="radio" name="personal-fill-mode" value="direct" checked /> Direct Mode (Keyword Matching)
-          </label>
-          <p style="margin-top: 2px;">Fast matching based on keywords you define. No AI required.</p>
-        </div>
-        <div class="provider-card">
-          <label>
-            <input type="radio" name="personal-fill-mode" value="ai" /> AI Mode (Intelligent Matching)
-          </label>
-          <p style="margin-top: 2px;">Uses AI to intelligently determine which data matches each field. More accurate but slower.</p>
-        </div>
+      <!-- Quick Actions - Always Visible -->
+      <div class="quick-actions">
+        <button id="fill">Fill with Random Data</button>
+        <button id="personal-fill">Fill with My Data</button>
+        <button id="smart-fill">Smart Fill with AI</button>
       </div>
 
-      <div id="current-activation-status" class="settings-group">
-        <h4>Current License Status</h4>
-        <p><strong>Key:</strong> <span id="display-activation-key">Not available</span></p>
-        <p><strong>Status:</strong> <span id="display-license-status">Inactive</span></p>
-        <p><strong>Details:</strong> <span id="display-license-details">N/A</span></p>
-        <button id="deactivate-extension" class="history-clear">Deactivate Extension</button>
-      </div>
-      
-      <div class="settings-group">
-        <h4>Settings</h4>
-        <label class="switchs">
-          <input type="checkbox" id="auto-run" />
-          Auto-run on page load
-        </label>
+      <!-- Collapsible Sections -->
+      <details class="settings-accordion" open>
+        <summary class="settings-accordion-header">
+          <span class="accordion-title">
+            <svg class="accordion-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            Personalized Data & Rules
+          </span>
+        </summary>
+        <div class="settings-accordion-content">
+          <p class="history-subhead">Define custom data fields and the keywords to trigger them.</p>
+
+          <div id="personal-data-container">
+            <!-- Data fields will be dynamically inserted here by popup.js -->
+          </div>
+
+          <button id="add-personal-data-field" class="button-primary"
+            style="margin-top: 15px; width: auto; padding: 8px 15px;">+ Add New Field</button>
+          <button id="save-personal-data" class="save-button">Save All Personal Data</button>
+
+          <h4 style="margin-top: 20px;">Personal Fill Mode</h4>
+          <p class="history-subhead">Choose how "Fill with My Data" matches fields with your personal data.</p>
+          <div class="provider-card" style="margin-top: 8px; padding-top: 5px; padding-bottom: 5px;">
+            <label>
+              <input type="radio" name="personal-fill-mode" value="direct" checked /> Direct Mode (Keyword Matching)
+            </label>
+            <p style="margin-top: 2px;">Fast matching based on keywords you define. No AI required.</p>
+          </div>
+          <div class="provider-card">
+            <label>
+              <input type="radio" name="personal-fill-mode" value="ai" /> AI Mode (Intelligent Matching)
+            </label>
+            <p style="margin-top: 2px;">Uses AI to intelligently determine which data matches each field. More accurate
+              but slower.</p>
+          </div>
+        </div>
+      </details>
+
+      <details class="settings-accordion">
+        <summary class="settings-accordion-header">
+          <span class="accordion-title">
+            <svg class="accordion-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2">
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" />
+            </svg>
+            Settings
+          </span>
+        </summary>
+        <div class="settings-accordion-content">
+          <!-- General Settings -->
+          <h4 style="margin-top: 0;">General</h4>
+          <label class="switchs">
+            <input type="checkbox" id="auto-run" />
+            Auto-run on page load
+          </label>
+
           <h4 style="margin-top: 15px;">Fill Mode</h4>
           <div class="provider-card" style="margin-top:0; padding-top: 5px; padding-bottom: 5px;">
             <label>
@@ -653,77 +816,128 @@
             </label>
             <p style="margin-top: 2px;">Tampilkan panel untuk meninjau & mengedit jawaban sebelum diisi.</p>
           </div>
-          <h4 style="margin-top: 10px;">UI Customization</h4>
+
+          <!-- UI Customization -->
+          <h4 style="margin-top: 20px; border-top: 1px solid var(--color-border); padding-top: 15px;">UI Customization
+          </h4>
           <label for="trigger-button-bg-color">Trigger Button Background Color</label>
           <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="text" id="trigger-button-bg-color" class="api-key-input" data-coloris value="" style="flex-grow: 1;" />
+            <input type="text" id="trigger-button-bg-color" class="api-key-input" data-coloris value=""
+              style="flex-grow: 1;" />
           </div>
           <label for="trigger-icon-span-color" style="margin-top: 10px;">Trigger Icon Bar Color</label>
           <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="text" id="trigger-icon-span-color" class="api-key-input" data-coloris value="" style="flex-grow: 1;" />
+            <input type="text" id="trigger-icon-span-color" class="api-key-input" data-coloris value=""
+              style="flex-grow: 1;" />
           </div>
           <label for="overlay-opacity" style="margin-top: 10px;">Trigger Button Opacity</label>
           <input type="range" id="overlay-opacity" min="0" max="100" value="70" style="width: 100%;" />
-          <span id="trigger-button-opacity-value" style="display: block; text-align: right; font-size: 0.85em; color: var(--color-muted);">70%</span>
+          <span id="trigger-button-opacity-value"
+            style="display: block; text-align: right; font-size: 0.85em; color: var(--color-muted);">70%</span>
           <button id="save-ui-settings" class="save-button">Save UI Settings</button>
         </div>
+      </details>
 
-      <div class="settings-group">
-        <h4>AI Provider</h4>
-        <div class="provider-card">
-          <label>
-            <input type="radio" name="ai-provider" value="gemini" checked />
-            Gemini API (key rotation)
-          </label>
-          <p>Use your Gemini keys with automatic cooldowns.</p>
+      <details class="settings-accordion">
+        <summary class="settings-accordion-header">
+          <span class="accordion-title">
+            <svg class="accordion-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            AI Configuration
+          </span>
+        </summary>
+        <div class="settings-accordion-content">
+          <h4 style="margin-top: 0;">Provider</h4>
+          <div class="provider-card">
+            <label>
+              <input type="radio" name="ai-provider" value="gemini" checked />
+              Gemini API (key rotation)
+            </label>
+            <p>Use your Gemini keys with automatic cooldowns.</p>
+          </div>
+          <div class="provider-card">
+            <label>
+              <input type="radio" name="ai-provider" value="openai" />
+              OpenAI-compatible
+            </label>
+            <p>Point to any OpenAI-style proxy (base URL + endpoint + bearer token).</p>
+          </div>
+
+          <h4 style="margin-top: 20px; border-top: 1px solid var(--color-border); padding-top: 15px;">API Keys</h4>
+          <div id="gemini-settings" class="provider-settings">
+            <label for="api-keys">Enter one per line</label>
+            <textarea id="api-keys" class="api-key-input" rows="5"
+              placeholder="Enter API keys, one per line"></textarea>
+            <button id="save-keys" class="save-button">Save Keys</button>
+          </div>
+
+          <div id="openai-settings" class="provider-settings hidden">
+            <label for="openai-base-url">Base URL</label>
+            <input id="openai-base-url" class="api-key-input" type="text"
+              placeholder="https://kotproxy.lewds.dev/openai/v1/" />
+            <label for="openai-endpoint">Endpoint path</label>
+            <input id="openai-endpoint" class="api-key-input" type="text"
+              placeholder="https://kotproxy.lewds.dev/openai/v1/responses" />
+            <label for="openai-model">Model</label>
+            <input id="openai-model" class="api-key-input" type="text" placeholder="gpt-5-nano" />
+            <label for="openai-token">Bearer token</label>
+            <textarea id="openai-token" class="api-key-input" rows="3" placeholder="Enter Bearer token"></textarea>
+            <button id="save-openai" class="save-button">Save OpenAI Settings</button>
+          </div>
         </div>
-        <div class="provider-card">
-          <label>
-            <input type="radio" name="ai-provider" value="openai" />
-            OpenAI-compatible
-          </label>
-          <p>Point to any OpenAI-style proxy (base URL + endpoint + bearer token).</p>
+      </details>
+
+      <details class="settings-accordion">
+        <summary class="settings-accordion-header">
+          <span class="accordion-title">
+            <svg class="accordion-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            Tools & Management
+          </span>
+        </summary>
+        <div class="settings-accordion-content">
+          <h4 style="margin-top: 0;">Custom Profiles</h4>
+          <p class="history-subhead">Create custom profiles to use the smart filler on any website.</p>
+          <button id="manage-profiles" style="margin-bottom: 15px;">Manage Profiles</button>
+
+          <h4 style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;">Session</h4>
+          <p class="history-subhead">Clear the session if the same question is not being filled.</p>
+          <button id="reset-session" class="history-clear" style="margin-bottom: 15px;">Reset Current Session</button>
+
+          <h4 style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;">History</h4>
+          <p class="history-subhead">View and manage your smart fill history.</p>
+          <button id="view-history">View History</button>
         </div>
-      </div>
+      </details>
 
-
-      <div id="gemini-settings" class="settings-group provider-settings">
-        <h4>Gemini API Keys</h4>
-        <label for="api-keys">Enter one per line</label>
-        <textarea id="api-keys" class="api-key-input" rows="5" placeholder="Enter API keys, one per line"></textarea>
-        <button id="save-keys" class="save-button">Save Keys</button>
-      </div>
-
-      <div id="openai-settings" class="settings-group provider-settings hidden">
-        <h4>OpenAI Settings</h4>
-        <label for="openai-base-url">Base URL</label>
-        <input id="openai-base-url" class="api-key-input" type="text" placeholder="https://kotproxy.lewds.dev/openai/v1/" />
-        <label for="openai-endpoint">Endpoint path</label>
-        <input id="openai-endpoint" class="api-key-input" type="text" placeholder="https://kotproxy.lewds.dev/openai/v1/responses" />
-        <label for="openai-model">Model</label>
-        <input id="openai-model" class="api-key-input" type="text" placeholder="gpt-5-nano" />
-        <label for="openai-token">Bearer token</label>
-        <textarea id="openai-token" class="api-key-input" rows="3" placeholder="Enter Bearer token"></textarea>
-        <button id="save-openai" class="save-button">Save OpenAI Settings</button>
-      </div>
-
-      <div class="settings-group">
-        <h4>Custom Website Profiles</h4>
-        <p class="history-subhead">Create custom profiles to use the smart filler on any website by selecting the question and answer elements.</p>
-        <button id="manage-profiles">Manage Profiles</button>
-      </div>
-
-      <div class="settings-group">
-        <h4>Session</h4>
-        <p class="history-subhead">If the same question is not being filled, clear the session for this tab.</p>
-        <button id="reset-session" class="history-clear">Reset Current Session</button>
-      </div>
-
-      <div class="settings-group">
-        <h4>Smart Fill History</h4>
-        <p class="history-subhead">View, search, and manage your smart fill history on a dedicated page.</p>
-        <button id="view-history">View History</button>
-      </div>
+      <details class="settings-accordion">
+        <summary class="settings-accordion-header">
+          <span class="accordion-title">
+            <svg class="accordion-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="12" y1="18" x2="12" y2="12" />
+              <line x1="9" y1="15" x2="15" y2="15" />
+            </svg>
+            License Status
+          </span>
+        </summary>
+        <div class="settings-accordion-content">
+          <p><strong>Key:</strong> <span id="display-activation-key">Not available</span></p>
+          <p><strong>Status:</strong> <span id="display-license-status">Inactive</span></p>
+          <p><strong>Details:</strong> <span id="display-license-details">N/A</span></p>
+          <button id="deactivate-extension" class="history-clear">Deactivate Extension</button>
+        </div>
+      </details>
 
       <div class="center-dev">
         <span class="developer-tag">By RzkyNT</span>
@@ -731,12 +945,13 @@
     </div> <!-- End of features-view -->
 
   </div> <!-- End of main-view -->
-  
+
 
   <div id="profiles-view" class="view">
     <button id="back-to-settings" class="back-button">Back to Settings</button>
     <h1>Custom Website Profiles</h1>
-    <p style="margin-bottom: 20px;">Here you can manage custom profiles for websites where the automatic detection doesn't work.</p>
+    <p style="margin-bottom: 20px;">Here you can manage custom profiles for websites where the automatic detection
+      doesn't work.</p>
 
     <div id="profiles-container">
       <ul id="profiles-list" class="profiles-list">
@@ -744,7 +959,7 @@
       </ul>
       <button id="add-new-profile" class="button-primary">Add New Profile</button>
       <button id="open-test-profile" class="button-primary">Open Profile Test Page</button>
-      
+
       <div style="margin-top: 20px; display: flex; gap: 10px;">
         <button id="export-profiles" class="button-primary" style="flex: 1;">Export Profiles</button>
         <input type="file" id="import-file-input" accept=".json" style="display: none;">
@@ -757,4 +972,5 @@
   <script src="vendor/coloris/coloris.min.js"></script>
   <script src="popup.js"></script>
 </body>
+
 </html>
