@@ -13,26 +13,43 @@ let cachedTriggerButtonOpacity = null;
 function updateTriggerColorVariable(variableName, value) {
   if (!variableName || typeof value !== 'string') return;
   
+  console.log(`[Content.js] updateTriggerColorVariable called. Variable: ${variableName}, Value: ${value}`); // Debug log
+
   if (variableName === '--trigger-button-background-color') {
     const triggerButton = document.getElementById('smart-fill-trigger-button');
     if (triggerButton) {
+      console.log(`[Content.js] Before update, Trigger Button Background: ${triggerButton.style.background}`); // Debug log
       triggerButton.style.background = value;
+      console.log(`[Content.js] After update, Trigger Button Background: ${triggerButton.style.background}`); // Debug log
+    } else {
+      console.warn("[Content.js] Trigger button not found for background color update."); // Debug log
     }
   } else if (variableName === '--trigger-icon-span-background-color') {
     const iconSpans = document.querySelectorAll('#smart-fill-trigger-button .smart-fill-icon span');
-    iconSpans.forEach(span => {
-      span.style.background = value;
-    });
+    if (iconSpans.length > 0) {
+      iconSpans.forEach((span, index) => {
+        console.log(`[Content.js] Before update, Icon Span ${index} Background: ${span.style.background}`); // Debug log
+        span.style.background = value;
+        console.log(`[Content.js] After update, Icon Span ${index} Background: ${span.style.background}`); // Debug log
+      });
+    } else {
+      console.warn("[Content.js] Icon spans not found for background color update."); // Debug log
+    }
   }
 }
 
 function updateTriggerButtonOpacityVariable(value) {
   if (value === undefined || value === null) return;
   const numericValue = Math.min(1, Math.max(0, parseFloat(value) || 0)); // value is 0-1
+  console.log(`[Content.js] updateTriggerButtonOpacityVariable called with value: ${numericValue}`); // Debug log
   document.documentElement.style.setProperty('--smart-fill-trigger-container-opacity', numericValue);
   const triggerContainer = document.getElementById("smart-fill-trigger-container");
   if (triggerContainer) {
+    console.log(`[Content.js] Before update, Trigger Container Opacity: ${triggerContainer.style.opacity}`); // Debug log
     triggerContainer.style.opacity = numericValue; // Directly set opacity for the container
+    console.log(`[Content.js] After update, Trigger Container Opacity: ${triggerContainer.style.opacity}`); // Debug log
+  } else {
+    console.warn("[Content.js] Trigger container not found when trying to update opacity."); // Debug log
   }
 }
 

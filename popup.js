@@ -63,7 +63,7 @@ const profilesList = document.getElementById('profiles-list');
 const addNewProfileButton = document.getElementById('add-new-profile');
 
 async function sendColorUpdateToContentScript(elementId, color) {
-  console.log(`[Popup.js] Attempting to send color update: ${elementId} = ${color}`);
+  console.log(`[Popup.js] Sending color update: elementId=${elementId}, color=${color}`); // Debug log
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab && tab.id) {
     chrome.tabs.sendMessage(tab.id, {
@@ -307,7 +307,7 @@ triggerButtonOpacityInput.addEventListener("input", () => {
 
 // Repurposed function for trigger button opacity
 async function sendTriggerButtonOpacityUpdateToContentScript(opacity) {
-  console.log(`[Popup.js] Attempting to send trigger button opacity update: ${opacity}`);
+  console.log(`[Popup.js] Sending opacity update: opacity=${opacity}`); // Debug log
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab && tab.id) {
     chrome.tabs.sendMessage(tab.id, {
