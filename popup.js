@@ -79,11 +79,40 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Load other non-activation-related settings from storage
-  chrome.storage.sync.get(["autoRun"], (result) => {
+  chrome.storage.local.get(["autoRun", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "showOverlay"], (result) => {
     autoRunCheckbox.checked = !!result.autoRun;
-  });
-  
-  chrome.storage.local.get(["apiKeys", "aiProvider", "openAiConfig", "themeMode", "showOverlay"], (result) => {
+    
+    // Initialize Coloris for Trigger Button Background
+    Coloris({
+      el: '#trigger-button-bg-color',
+      theme: 'large',
+      themeMode: darkModeToggle.checked ? 'dark' : 'light',
+      alpha: false,
+      format: 'hex',
+      formatToggle: false,
+      swatches: [
+        '#EDE1FF', '#25D366', '#FF6B7A', '#FFD700', '#ADD8E6', '#90EE90'
+      ]
+    });
+    document.getElementById("trigger-button-bg-color").value = result.triggerButtonBgColor || '#EDE1FF';
+    document.getElementById("trigger-button-bg-color").dispatchEvent(new Event('input')); // Trigger Coloris update
+
+    // Initialize Coloris for Trigger Icon Span Color
+    Coloris({
+      el: '#trigger-icon-span-color',
+      theme: 'large',
+      themeMode: darkModeToggle.checked ? 'dark' : 'light',
+      alpha: false,
+      format: 'hex',
+      formatToggle: false,
+      swatches: [
+        '#5E3BAE', '#000000', '#FFFFFF', '#FF6347', '#4682B4', '#DAA520'
+      ]
+    });
+    document.getElementById("trigger-icon-span-color").value = result.triggerIconSpanColor || '#5E3BAE';
+    document.getElementById("trigger-icon-span-color").dispatchEvent(new Event('input')); // Trigger Coloris update
+
+
     if (result.apiKeys && Array.isArray(result.apiKeys)) {
       apiKeysTextarea.value = result.apiKeys.map(item => item.key).join('\n');
     }
@@ -106,12 +135,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const showOverlay = result.showOverlay !== false;
     overlayToggle.checked = showOverlay;
+
+    // Apply theme to Coloris.js picker as well
+    Coloris.set('themeMode', darkModeToggle.checked ? 'dark' : 'light');
+  });
+});
+
+// Save UI settings
+document.getElementById("save-ui-settings").addEventListener("click", () => {
+  const triggerButtonBgColor = document.getElementById("trigger-button-bg-color").value;
+  const triggerIconSpanColor = document.getElementById("trigger-icon-span-color").value;
+  chrome.storage.sync.set({ triggerButtonBgColor: triggerButtonBgColor, triggerIconSpanColor: triggerIconSpanColor }, () => {
+    const saveButton = document.getElementById("save-ui-settings");
+    saveButton.textContent = "Saved!";
+    setTimeout(() => {
+      saveButton.textContent = "Save UI Settings";
+    }, 1500);
   });
 });
 
 // Save auto-run setting
 autoRunCheckbox.addEventListener("change", () => {
-  chrome.storage.sync.set({ autoRun: autoRunCheckbox.checked });
+  chrome.storage.local.set({ autoRun: autoRunCheckbox.checked });
 });
 
 // Persist provider selection immediately

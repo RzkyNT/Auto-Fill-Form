@@ -599,6 +599,15 @@ function updateProgressBar(ratio) {
   fill.style.width = `${percent}%`;
 }
 
+function updateProgressBar(ratio) {
+  const overlay = document.getElementById("fake-filler-overlay");
+  if (!overlay) return;
+  const fill = overlay.querySelector(".progress-fill");
+  if (!fill) return;
+  const percent = Math.min(100, Math.max(0, ratio * 100));
+  fill.style.width = `${percent}%`;
+}
+
 function startHistoryEntry(questionText, platform) {
   if (!smartFillSession) return;
   smartFillSession.currentEntry = {
@@ -818,12 +827,18 @@ async function createTriggerOverlay() {
   if (!shouldShowOverlay) return;
   if (document.getElementById('smart-fill-trigger-container')) return;
 
+  // Retrieve custom colors from storage
+  const { triggerButtonBgColor = '#EDE1FF', triggerIconSpanColor = '#5E3BAE' } = await chrome.storage.sync.get(['triggerButtonBgColor', 'triggerIconSpanColor']);
+
   // New icon for toggling the progress overlay
   const progressOverlayIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M200-200v-560h560v560H200Zm0 80h560q33 0 56.5-23.5T840-200v-560q0-33-23.5-56.5T760-840H200q-33 0-56.5 23.5T80-760v560q0 33 23.5 56.5T200-120Zm80-80h400v-400H280v400Zm-80 0v-560 560Z"/></svg>`;
 
-
   const triggerContainer = document.createElement("div");
   triggerContainer.id = "smart-fill-trigger-container";
+  // Set CSS variables for custom colors
+  triggerContainer.style.setProperty('--trigger-button-background-color', triggerButtonBgColor);
+  triggerContainer.style.setProperty('--trigger-icon-span-background-color', triggerIconSpanColor);
+
   triggerContainer.innerHTML = `
     <button id="smart-fill-trigger-button">
         <div class="smart-fill-icon"><span></span><span></span><span></span></div>
@@ -843,7 +858,8 @@ async function createTriggerOverlay() {
       width: 64px; height: 64px; display: flex; justify-content: center; align-items: center;
     }
     #smart-fill-trigger-button {
-      width: 100%; height: 100%; background: #EDE1FF; border-radius: 18px; border: none;
+      width: 100%; height: 100%; background: var(--trigger-button-background-color, #EDE1FF); /* Use CSS variable */
+      border-radius: 18px; border: none;
       display: flex; align-items: center; justify-content: center; cursor: pointer;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
       transition: transform .3s cubic-bezier(0.68, -0.55, 0.265, 1.55), box-shadow .2s ease;
@@ -853,7 +869,10 @@ async function createTriggerOverlay() {
     #smart-fill-trigger-button:hover { box-shadow: 0 6px 15px rgba(0,0,0,0.28); }
     #smart-fill-trigger-button .smart-fill-icon { display: flex; flex-direction: column; gap: 5px; transition: transform 0.2s ease; }
     #smart-fill-trigger-container.active #smart-fill-trigger-button .smart-fill-icon { transform: rotate(-45deg); }
-    #smart-fill-trigger-button .smart-fill-icon span { width: 24px; height: 4px; background: #5E3BAE; border-radius: 4px; }
+    #smart-fill-trigger-button .smart-fill-icon span { 
+      width: 24px; height: 4px; background: var(--trigger-icon-span-background-color, #5E3BAE); /* Use CSS variable */
+      border-radius: 4px; 
+    }
     .social-icon {
       position: absolute; display: flex; align-items: center; justify-content: center;
       width: 48px; height: 48px; border-radius: 50%; background: #f0f0f0;
@@ -881,11 +900,11 @@ async function createTriggerOverlay() {
       transition-delay: 0.15s;
     }
     #smart-fill-trigger-container.active #reset-session-button {
-      transform: translate(-70px, 40px); /* Custom position below left */
+      transform: translate(-57px, -115px); /* Custom position below left */
       transition-delay: 0.2s;
     }
     #smart-fill-trigger-container.active #toggle-progress-overlay-button { /* NEW BUTTON POSITION */
-      transform: translate(30px, -70px); /* Adjust as needed for spacing */
+      transform: translate(0px, -140px); /* Adjust as needed for spacing */
       transition-delay: 0.25s;
     }
 
