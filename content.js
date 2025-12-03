@@ -2943,8 +2943,8 @@ Response (number only or "NONE"):`;
       transform: translateX(-50%);
       width: 90%;
       max-width: 700px;
-      background: #0B0F14;
-      color: #F2F4F6;
+      background: rgba(11, 15, 20, 0.10);
+      color: #000000ff;
       border: 1px solid rgba(255,255,255,0.1);
       border-radius: 12px;
       box-shadow: 0 10px 40px rgba(0,0,0,0.5);
@@ -2955,24 +2955,27 @@ Response (number only or "NONE"):`;
       padding: 15px 20px;
       font-family: 'Segoe UI', sans-serif;
       transition: bottom 0.3s ease;
+      pointer-events: none;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
     }
     #sf-builder-content { flex-grow: 1; }
     #${BUILDER_UI_IDS.INSTRUCTIONS} { margin: 0 0 10px 0; font-size: 16px; }
-    #sf-builder-preview-box { background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px 12px; }
     #sf-builder-preview-box span { color: #888; margin-right: 8px; }
     #${BUILDER_UI_IDS.SELECTOR_PREVIEW} { font-family: 'Courier New', monospace; font-size: 13px; color: #25D366; word-break: break-all; }
-    #sf-builder-actions { display: flex; gap: 10px; }
+    #sf-builder-actions { display: flex; gap: 10px; pointer-events: auto; }
     .sf-builder-button { 
       padding: 8px 16px; 
       border: 1px solid rgba(255,255,255,0.2); 
       background: transparent; 
-      color: #F2F4F6;
+      color: #000000ff;
       border-radius: 6px;
       cursor: pointer;
       transition: background 0.2s;
       justify-content: center;
       align-items: center;
       display: flex;
+      pointer-events: auto;
     }
     .sf-builder-button:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
     .sf-builder-button:disabled { cursor: not-allowed; opacity: 0.5; }
