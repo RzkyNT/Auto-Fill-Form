@@ -108,13 +108,15 @@ document.addEventListener("DOMContentLoaded", () => {
       swatches: [
         '#EDE1FF', '#25D366', '#FF6B7A', '#FFD700', '#ADD8E6', '#90EE90'
       ],
-      eyedropper: true, // Enable eyedropper
-      onChange: (color) => { // Real-time update
-        sendColorUpdateToContentScript('trigger-button-bg-color', color);
-      }
+      eyedropper: true // Enable eyedropper
     });
     document.getElementById("trigger-button-bg-color").value = result.triggerButtonBgColor || '#EDE1FF';
     sendColorUpdateToContentScript('trigger-button-bg-color', document.getElementById("trigger-button-bg-color").value);
+    document.addEventListener('coloris:pick', (event) => {
+      if (event.detail.el && event.detail.el.id === 'trigger-button-bg-color') {
+        sendColorUpdateToContentScript('trigger-button-bg-color', event.detail.color);
+      }
+    });
 
     // Initialize Coloris for Trigger Icon Span Color
     Coloris({
@@ -127,13 +129,15 @@ document.addEventListener("DOMContentLoaded", () => {
       swatches: [
         '#5E3BAE', '#000000', '#FFFFFF', '#FF6347', '#4682B4', '#DAA520'
       ],
-      eyedropper: true, // Enable eyedropper
-      onChange: (color) => { // Real-time update
-        sendColorUpdateToContentScript('trigger-icon-span-color', color);
-      }
+      eyedropper: true // Enable eyedropper
     });
     document.getElementById("trigger-icon-span-color").value = result.triggerIconSpanColor || '#5E3BAE';
     sendColorUpdateToContentScript('trigger-icon-span-color', document.getElementById("trigger-icon-span-color").value);
+    document.addEventListener('coloris:pick', (event) => {
+      if (event.detail.el && event.detail.el.id === 'trigger-icon-span-color') {
+        sendColorUpdateToContentScript('trigger-icon-span-color', event.detail.color);
+      }
+    });
     if (result.apiKeys && Array.isArray(result.apiKeys)) {
       apiKeysTextarea.value = result.apiKeys.map(item => item.key).join('\n');
     }

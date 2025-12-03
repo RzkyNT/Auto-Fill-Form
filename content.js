@@ -5,53 +5,34 @@ if (window.hasRunContentScript) {
   initContentScript(); // <== jalankan semua logic di sini
 }
 
+// Cache for real-time updates before trigger elements are created
+let cachedTriggerButtonBgColor = null;
+let cachedTriggerIconSpanColor = null;
+let cachedTriggerButtonOpacity = null;
+
 function updateTriggerColorVariable(variableName, value) {
   if (!variableName || typeof value !== 'string') return;
   
-  console.log(`[Content.js] updateTriggerColorVariable called. Variable: ${variableName}, Value: ${value}`);
-
   if (variableName === '--trigger-button-background-color') {
     const triggerButton = document.getElementById('smart-fill-trigger-button');
     if (triggerButton) {
-      console.log(`[Content.js] Before update, Trigger Button Background: ${triggerButton.style.background}`);
       triggerButton.style.background = value;
-      console.log(`[Content.js] After update, Trigger Button Background: ${triggerButton.style.background}`);
-    } else {
-      console.warn("[Content.js] Trigger button not found for background color update.");
     }
-    const iconSpans = document.querySelectorAll('#smart-fill-trigger-button .smart-fill-icon span');
-    iconSpans.forEach((span, index) => {
-      console.log(`[Content.js] Icon Span ${index} Background (should not change): ${span.style.background}`);
-    });
   } else if (variableName === '--trigger-icon-span-background-color') {
     const iconSpans = document.querySelectorAll('#smart-fill-trigger-button .smart-fill-icon span');
-    if (iconSpans.length > 0) {
-      iconSpans.forEach((span, index) => {
-        console.log(`[Content.js] Before update, Icon Span ${index} Background: ${span.style.background}`);
-        span.style.background = value;
-        console.log(`[Content.js] After update, Icon Span ${index} Background: ${span.style.background}`);
-      });
-    } else {
-      console.warn("[Content.js] Icon spans not found for background color update.");
-    }
-    const triggerButton = document.getElementById('smart-fill-trigger-button');
-    if (triggerButton) {
-      console.log(`[Content.js] Trigger Button Background (should not change): ${triggerButton.style.background}`);
-    }
+    iconSpans.forEach(span => {
+      span.style.background = value;
+    });
   }
 }
 
 function updateTriggerButtonOpacityVariable(value) {
   if (value === undefined || value === null) return;
   const numericValue = Math.min(1, Math.max(0, parseFloat(value) || 0)); // value is 0-1
-  console.log(`[Content.js] updateTriggerButtonOpacityVariable called with value: ${numericValue}`); // Debug log
   document.documentElement.style.setProperty('--smart-fill-trigger-container-opacity', numericValue);
   const triggerContainer = document.getElementById("smart-fill-trigger-container");
   if (triggerContainer) {
     triggerContainer.style.opacity = numericValue; // Directly set opacity for the container
-    console.log(`[Content.js] Trigger container opacity set to: ${numericValue}`); // Debug log
-  } else {
-    console.warn("[Content.js] Trigger container not found when trying to update opacity."); // Debug log
   }
 }
 
@@ -65,18 +46,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'updateColor') {
     console.log(`[Content.js] Handling updateColor: elementId=${request.elementId}, color=${request.color}`);
     if (request.elementId === 'trigger-button-bg-color') {
+      cachedTriggerButtonBgColor = request.color; // Cache the value
       updateTriggerColorVariable('--trigger-button-background-color', request.color);
     } else if (request.elementId === 'trigger-icon-span-color') {
+      cachedTriggerIconSpanColor = request.color; // Cache the value
       updateTriggerColorVariable('--trigger-icon-span-background-color', request.color);
-      return true; // Indicate that response will be sent asynchronously
     }
     sendResponse({ status: 'color updated' });
-    return true; // Indicate that response will be sent asynchronously
+    // Removed return true;
   } else if (request.action === 'updateTriggerButtonOpacity') { // NEW: Handle trigger button opacity updates
-    console.log(`[Content.js] Message: updateTriggerButtonOpacity received with opacity: ${request.opacity}`); // Debug log
+    cachedTriggerButtonOpacity = request.opacity; // Cache the value
     updateTriggerButtonOpacityVariable(request.opacity);
     sendResponse({ status: 'trigger button opacity updated' });
-    return true;
+    // Removed return true;
   }
   // --- Original Message Listener ---
   if (request.action === 'showContentToast' && request.toast) {
@@ -87,25 +69,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     startGuidedProfileCreation(request.existingProfile, request.hostname); 
     sendResponse({ status: 'guided_selection_started' });
   }
-  return true; 
+  // Removed return true;
 });
 
-// Initial application of settings when content script loads
-chrome.storage.local.get(["triggerButtonBgColor", "triggerIconSpanColor", "triggerButtonOpacity"], (result) => { // Updated storage key
-  console.log("[Content.js] Loaded initial settings from storage:", result);
-  if (result.triggerButtonBgColor) {
-    updateTriggerColorVariable('--trigger-button-background-color', result.triggerButtonBgColor);
-    console.log(`[Content.js] Initial --trigger-button-background-color set to ${result.triggerButtonBgColor}`);
-  }
-  if (result.triggerIconSpanColor) {
-    updateTriggerColorVariable('--trigger-icon-span-background-color', result.triggerIconSpanColor);
-    console.log(`[Content.js] Initial --trigger-icon-span-background-color set to ${result.triggerIconSpanColor}`);
-  }
 
-  const initialTriggerButtonOpacity = result.triggerButtonOpacity !== undefined ? parseFloat(result.triggerButtonOpacity) / 100 : 1; // Default to 1 (100%)
-  updateTriggerButtonOpacityVariable(initialTriggerButtonOpacity); // Apply to the trigger button
-  console.log(`[Content.js] Initial trigger button opacity set to ${initialTriggerButtonOpacity}`);
-});
 
 // Listen for manual trigger
 window.addEventListener("fakeFiller:run", doFakeFill);
@@ -896,7 +863,13 @@ function toggleProgressOverlay(show) {
  */
 async function createTriggerOverlay() {
   console.log("[Content.js] createTriggerOverlay function started.");
-  const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
+  const { customProfiles, triggerButtonBgColor, triggerIconSpanColor, triggerButtonOpacity } = await chrome.storage.local.get({ 
+    customProfiles: {},
+    triggerButtonBgColor: '#EDE1FF', // Default
+    triggerIconSpanColor: '#5E3BAE', // Default
+    triggerButtonOpacity: 100 // Default (0-100 scale)
+  });
+
   const host = window.location.hostname;
   const hasCustomProfile = !!customProfiles[host];
   const supportedPlatforms = ['docs.google.com', 'wayground.com', 'quizziz.com', 'kahoot.it', 'play.kahoot.it', '115.124.76.241'];
@@ -911,31 +884,75 @@ async function createTriggerOverlay() {
     return;
   }
 
-  // Retrieve custom colors from storage
-  const { triggerButtonBgColor = '#EDE1FF', triggerIconSpanColor = '#5E3BAE' } = await chrome.storage.local.get(['triggerButtonBgColor', 'triggerIconSpanColor']);
-  console.log(`[Content.js] Retrieved trigger colors: Button=${triggerButtonBgColor}, Icon=${triggerIconSpanColor}`);
+  // Use cached values if available, otherwise fallback to stored or default values
+  const currentButtonBgColor = cachedTriggerButtonBgColor || triggerButtonBgColor;
+  const currentIconSpanColor = cachedTriggerIconSpanColor || triggerIconSpanColor;
+  const currentOpacity = cachedTriggerButtonOpacity !== null ? cachedTriggerButtonOpacity : (parseFloat(triggerButtonOpacity) / 100);
 
   // New icon for toggling the progress overlay
   const progressOverlayIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M200-200v-560h560v560H200Zm0 80h560q33 0 56.5-23.5T840-200v-560q0-33-23.5-56.5T760-840H200q-33 0-56.5 23.5T80-760v560q0 33 23.5 56.5T200-120Zm80-80h400v-400H280v400Zm-80 0v-560 560Z"/></svg>`;
 
-  const triggerContainer = document.createElement("div");
-  triggerContainer.id = "smart-fill-trigger-container";
-  console.log("[Content.js] Created #smart-fill-trigger-container."); // Debug log
-  // Set CSS variables for custom colors
-  triggerContainer.style.setProperty('--trigger-button-background-color', triggerButtonBgColor);
-  triggerContainer.style.setProperty('--trigger-icon-span-background-color', triggerIconSpanColor);
-  console.log(`[Content.js] Set triggerContainer CSS variables: --trigger-button-background-color=${triggerButtonBgColor}, --trigger-icon-span-background-color=${triggerIconSpanColor}`);
+      const triggerContainer = document.createElement("div");
 
-  triggerContainer.innerHTML = `
-    <button id="smart-fill-trigger-button">
-        <div class="smart-fill-icon"><span></span><span></span><span></span></div>
-    </button>
-    <a href="#" id="run-ai-button" class="social-icon" title="Run AI">${runAiIcon}</a>
-    <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">${fullscreenEnterIcon}</a>
-    <a href="#" id="reset-session-button" class="social-icon" title="Reset Session">${resetSessionIcon}</a>
-    <a href="#" id="chat-overlay-button" class="social-icon" title="AI Chat">${chatIcon}</a>
-    <a href="#" id="toggle-progress-overlay-button" class="social-icon" title="Show/Hide Progress">${progressOverlayIcon}</a> <!-- NEW BUTTON -->
-  `;
+      triggerContainer.id = "smart-fill-trigger-container";
+
+      
+
+      // Apply initial inline styles using current (cached/stored) values
+
+      triggerContainer.style.opacity = currentOpacity;
+
+      
+
+      triggerContainer.innerHTML = `
+
+        <button id="smart-fill-trigger-button" style="background: ${currentButtonBgColor};">
+
+            <div class="smart-fill-icon">
+
+                <span style="background: ${currentIconSpanColor};"></span>
+
+                <span style="background: ${currentIconSpanColor};"></span>
+
+                <span style="background: ${currentIconSpanColor};"></span>
+
+            </div>
+
+        </button>
+
+        <a href="#" id="run-ai-button" class="social-icon" title="Run AI">${runAiIcon}</a>
+
+        <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">${fullscreenEnterIcon}</a>
+
+        <a href="#" id="reset-session-button" class="social-icon" title="Reset Session">${resetSessionIcon}</a>
+
+        <a href="#" id="chat-overlay-button" class="social-icon" title="AI Chat">${chatIcon}</a>
+
+        <a href="#" id="toggle-progress-overlay-button" class="social-icon" title="Show/Hide Progress">${progressOverlayIcon}</a> <!-- NEW BUTTON -->
+
+      `;
+
+    
+
+      // After innerHTML is set, the elements are available in the DOM Fragment
+
+      const smartFillTriggerButton = triggerContainer.querySelector('#smart-fill-trigger-button');
+
+      const smartFillIconSpans = triggerContainer.querySelectorAll('.smart-fill-icon span');
+
+    
+
+      if (smartFillTriggerButton) {
+
+        smartFillTriggerButton.style.background = currentButtonBgColor;
+
+      }
+
+      smartFillIconSpans.forEach(span => {
+
+        span.style.background = currentIconSpanColor;
+
+      });
 
   const style = document.createElement("style");
   style.id = "smart-fill-trigger-style";
