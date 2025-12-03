@@ -1113,6 +1113,7 @@ Response (number only or "NONE"):`;
   const cancelAiIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>`;
   const resetSessionIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/></svg>`;
   const chatIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M80-240v-480h800v480H80Zm120-80h560v-320H200v320Zm0 0v-320 320Z"/></svg>`;
+  const addProfileIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M480-480Zm0 320q-66 0-124-25t-101.5-68.5Q211-297 186-355t-25-125q0-66 25-124t68.5-101.5Q298-749 356-774t124-25q101 0 180 58.5T762-580h-80q-32-68-93-109t-149-41q-92 0-156 64t-64 156q0 92 64 156t156 64q88 0 150-58.5T680-500h80q-11 107-90 181.5T480-160Zm-40-120v-120h-120v-80h120v-120h80v120h120v80H520v120h-80Z"/></svg>`;
 
   /**
    * Shows a simple toast notification on the page.
@@ -1273,6 +1274,8 @@ Response (number only or "NONE"):`;
 
         <a href="#" id="chat-overlay-button" class="social-icon" title="AI Chat">${chatIcon}</a>
 
+        <a href="#" id="add-profile-button" class="social-icon" title="Add Profile">${addProfileIcon}</a>
+
         <a href="#" id="toggle-progress-overlay-button" class="social-icon" title="Show/Hide Progress">${progressOverlayIcon}</a> <!-- NEW BUTTON -->
 
       `;
@@ -1337,7 +1340,7 @@ Response (number only or "NONE"):`;
         transform: scale(1);
     }
     
-    /* Correctly arrange all 5 buttons in a 90-degree arc */
+    /* Distribute all floating action buttons in a fan layout */
     #smart-fill-trigger-container.active #run-ai-button {
       transform: translate(0, -80px); /* Top */
       transition-delay: 0.05s;
@@ -1354,6 +1357,10 @@ Response (number only or "NONE"):`;
       transform: translate(-107px, -107px); /* Custom position below left */
       transition-delay: 0.2s;
     }
+    #smart-fill-trigger-container.active #add-profile-button {
+      transform: translate(-57px, -137px); /* Up with slight left offset */
+      transition-delay: 0.22s;
+    }
     #smart-fill-trigger-container.active #toggle-progress-overlay-button { /* NEW BUTTON POSITION */
       transform: translate(0px, -140px); /* Adjust as needed for spacing */
       transition-delay: 0.25s;
@@ -1369,6 +1376,7 @@ Response (number only or "NONE"):`;
     #fullscreen-button.active, #fullscreen-button.active:hover { background-color: #81d4fa; }
     #reset-session-button:hover { background: #ffecb3; }
     #chat-overlay-button:hover { background: #d1c4e9; }
+    #add-profile-button:hover { background: #c8e4ff; }
     #toggle-progress-overlay-button:hover { background: #e0f2f7; } /* New button hover */
   `;
 
@@ -1414,6 +1422,12 @@ Response (number only or "NONE"):`;
       const chatOverlay = document.getElementById('ai-chat-overlay-container');
       if (chatOverlay) chatOverlay.style.display = 'flex';
       triggerContainer.classList.remove('active');
+    });
+
+    document.getElementById('add-profile-button').addEventListener('click', (e) => {
+      e.preventDefault();
+      triggerContainer.classList.remove('active');
+      startGuidedProfileCreation(null, window.location.hostname);
     });
 
     // Listener for toggling progress overlay from outside the smart fill process
@@ -2956,6 +2970,9 @@ Response (number only or "NONE"):`;
       border-radius: 6px;
       cursor: pointer;
       transition: background 0.2s;
+      justify-content: center;
+      align-items: center;
+      display: flex;
     }
     .sf-builder-button:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
     .sf-builder-button:disabled { cursor: not-allowed; opacity: 0.5; }
