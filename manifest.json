@@ -1,9 +1,16 @@
 {
   "name": "Smart Filler Simple",
-  "version": "1.0.4",
+  "version": "2.0.1",
   "manifest_version": 3,
   "description": "Auto-fill form fields with random data",
-  "permissions": ["activeTab", "scripting", "storage", "tabs", "notifications", "alarms"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "notifications",
+    "alarms"
+  ],
   "host_permissions": [
     "https://random-word-api.vercel.app/",
     "https://generativelanguage.googleapis.com/",
@@ -21,18 +28,35 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["utils.js", "vendor/katex/katex.min.js", "latex.js", "content.js"]
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "utils.js",
+        "vendor/katex/katex.min.js",
+        "latex.js",
+        "content.js"
+      ]
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["vendor/sweetalert2/sweetalert2.min.css", "vendor/sweetalert2/sweetalert2.min.js"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "vendor/sweetalert2/sweetalert2.min.css",
+        "vendor/sweetalert2/sweetalert2.min.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     },
     {
-      "resources": ["vendor/katex/*", "vendor/katex/fonts/*"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "vendor/katex/*",
+        "vendor/katex/fonts/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }
