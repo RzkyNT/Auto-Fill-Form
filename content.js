@@ -309,14 +309,15 @@ function getAiResponse(prompt) {
 }
 
 /**
- * Calls an OCR API to get text from an image URL.
+ * Calls an OCR API to get text from an image URL, with a fallback.
  * @param {string} imageUrl The URL of the image to process.
  * @returns {Promise<string>} A promise that resolves with the OCR text, or an empty string on failure.
  */
 async function getTextFromImage(imageUrl) {
     if (!imageUrl) return '';
-    
-    const apiKey = 'keysita_47JX47JX'; 
+
+    // --- Primary API ---
+    const primaryApiKey = 'keysita_47JX47JX';
     let effectiveImageUrl = imageUrl;
 
     // The API requires the URL to end with an image extension. If it doesn't,
@@ -324,31 +325,56 @@ async function getTextFromImage(imageUrl) {
     if (!/\.(jpg|jpeg|png|webp)$/i.test(imageUrl)) {
         effectiveImageUrl += (imageUrl.includes('?') ? '&' : '?') + 'ext=.png';
     }
-    
-    const ocrApiUrl = `https://api.ferdev.my.id/tools/ocr?link=${encodeURIComponent(effectiveImageUrl)}&apikey=${apiKey}`;
+    const primaryOcrApiUrl = `https://api.ferdev.my.id/tools/ocr?link=${encodeURIComponent(effectiveImageUrl)}&apikey=${primaryApiKey}`;
 
     try {
-        updateProgressOverlay("Reading image (OCR)...", "Mengambil teks dari gambar.");
-        const response = await fetch(ocrApiUrl);
+        updateProgressOverlay("Reading image (OCR)...", "Mengambil teks dari gambar (API Utama).");
+        const response = await fetch(primaryOcrApiUrl);
         if (!response.ok) {
-            throw new Error(`OCR API request failed with status ${response.status}`);
+            throw new Error(`Primary OCR API request failed with status ${response.status}`);
         }
         const data = await response.json();
-        if (data.success && data.text) {
-            console.log("OCR Success:", data.text);
-            updateProgressOverlay("Image content read", data.text);
-            return data.text;
+        const ocrText = data.text;
+        if (data.success && ocrText) {
+            console.log("Primary OCR Success:", ocrText);
+            updateProgressOverlay("Image content read", ocrText);
+            return ocrText;
         }
-        if (data.text) {
-             console.log("OCR Success (no success field):", data.text);
-             updateProgressOverlay("Image content read", data.text);
-             return data.text;
+        if (ocrText) {
+             console.log("Primary OCR Success (no success field):", ocrText);
+             updateProgressOverlay("Image content read", ocrText);
+             return ocrText;
         }
-        throw new Error('OCR response did not contain a usable text field.');
-    } catch (error) {
-        console.error("OCR Error:", error);
-        updateProgressOverlay("OCR Error", error.message);
-        return '';
+        // If there's no text but the request was "ok", it's still a failure to get content.
+        throw new Error('Primary OCR response did not contain a usable text field.');
+    } catch (primaryError) {
+        console.error("Primary OCR Error:", primaryError);
+        updateProgressOverlay("Primary OCR failed, trying fallback...", primaryError.message);
+
+        // --- Fallback API ---
+        const fallbackApiKey = 'planaai';
+        const fallbackOcrApiUrl = `https://www.sankavollerei.com/tools/ocr?apikey=${fallbackApiKey}&url=${encodeURIComponent(imageUrl)}`;
+        
+        try {
+            updateProgressOverlay("Reading image (OCR Fallback)...", "Mengambil teks dari gambar (API Fallback).");
+            const response = await fetch(fallbackOcrApiUrl);
+            if (!response.ok) {
+                throw new Error(`Fallback OCR API request failed with status ${response.status}`);
+            }
+            const data = await response.json();
+            // Assuming fallback response structure is similar to audio or has a 'text' or 'result' field
+            const fallbackText = data.result?.text || data.text || data.result;
+            if (fallbackText) {
+                console.log("Fallback OCR Success:", fallbackText);
+                updateProgressOverlay("Image content read (Fallback)", fallbackText);
+                return fallbackText;
+            }
+            throw new Error('Fallback OCR response did not contain a usable text field.');
+        } catch (fallbackError) {
+            console.error("Fallback OCR Error:", fallbackError);
+            updateProgressOverlay("All OCR attempts failed", fallbackError.message);
+            return '';
+        }
     }
 }
 
@@ -391,35 +417,58 @@ async function getImageContext(imageUrl) {
 }
 
 /**
- * Calls an API to get a transcription from an audio URL.
+ * Calls an API to get a transcription from an audio URL, with a fallback.
  * @param {string} audioUrl The URL of the audio to process.
  * @returns {Promise<string>} A promise that resolves with the transcribed text, or an empty string on failure.
  */
 async function getTextFromAudio(audioUrl) {
     if (!audioUrl) return '';
-    
-    const apiKey = 'planaai';
-    const apiUrl = `https://www.sankavollerei.com/tools/audio-to-text?apikey=${apiKey}&url=${encodeURIComponent(audioUrl)}`;
+
+    // --- Primary API ---
+    const primaryApiKey = 'planaai';
+    const primaryApiUrl = `https://www.sankavollerei.com/tools/audio-to-text?apikey=${primaryApiKey}&url=${encodeURIComponent(audioUrl)}`;
 
     try {
-        updateProgressOverlay("Transcribing audio...", "Mengubah audio menjadi teks.");
-        const response = await fetch(apiUrl);
+        updateProgressOverlay("Transcribing audio...", "Mengubah audio menjadi teks (API Utama).");
+        const response = await fetch(primaryApiUrl);
         if (!response.ok) {
-            throw new Error(`Audio-to-text API request failed with status ${response.status}`);
+            throw new Error(`Primary audio-to-text API request failed with status ${response.status}`);
         }
         const data = await response.json();
-        // Based on the provided example, the transcribed text is in data.result.text
         const transcribedText = data.result?.text || data.text || data.result;
         if (transcribedText) {
-            console.log("Audio Transcription Success:", transcribedText);
+            console.log("Primary Audio Transcription Success:", transcribedText);
             updateProgressOverlay("Audio transcribed", transcribedText);
             return transcribedText;
         }
-        throw new Error('Audio-to-text response did not contain a usable text field.');
-    } catch (error) {
-        console.error("Audio-to-text Error:", error);
-        updateProgressOverlay("Audio-to-text Error", error.message);
-        return '';
+        throw new Error('Primary audio-to-text response did not contain a usable text field.');
+    } catch (primaryError) {
+        console.error("Primary Audio-to-text Error:", primaryError);
+        updateProgressOverlay("Primary audio API failed, trying fallback...", primaryError.message);
+
+        // --- Fallback API ---
+        const fallbackApiUrl = `https://api.nekolabs.web.id/tools/audio-transcribe?audioUrl=${encodeURIComponent(audioUrl)}`;
+        
+        try {
+            updateProgressOverlay("Transcribing audio (Fallback)...", "Mengubah audio menjadi teks (API Fallback).");
+            const response = await fetch(fallbackApiUrl);
+            if (!response.ok) {
+                throw new Error(`Fallback audio-to-text API request failed with status ${response.status}`);
+            }
+            const data = await response.json();
+            // Guessing the response structure for the fallback API
+            const fallbackText = data.result || data.text || data.transcription;
+            if (fallbackText) {
+                console.log("Fallback Audio Transcription Success:", fallbackText);
+                updateProgressOverlay("Audio transcribed (Fallback)", fallbackText);
+                return fallbackText;
+            }
+            throw new Error('Fallback audio-to-text response did not contain a usable text field.');
+        } catch (fallbackError) {
+            console.error("Fallback Audio-to-text Error:", fallbackError);
+            updateProgressOverlay("All audio transcription attempts failed", fallbackError.message);
+            return '';
+        }
     }
 }
 
