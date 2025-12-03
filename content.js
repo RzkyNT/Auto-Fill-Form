@@ -359,142 +359,175 @@ function formatAiResponseForDisplay(text) {
 }
 
 /**
- * Creates an overlay that exposes the current smart-fill progress.
+ * Creates or shows an overlay that exposes the current smart-fill progress.
+ * If the overlay doesn't exist, it creates it. If it exists, it ensures it's configured.
  */
 function createProgressOverlay() {
-  removeProgressOverlay();
-  if (!smartFillSession) {
-    initializeSmartFillSession();
-  }
-  const overlay = document.createElement("div");
-  overlay.id = "fake-filler-overlay";
-  overlay.innerHTML = `
-    <div class="overlay-card">
-      <div class="overlay-header">
-        <div>
-          <div class="overlay-title">Smart Filler AI</div>
-          <div class="overlay-detail">Memperhatikan instruksi...</div>
-        </div>
-        <button type="button" class="overlay-stop-button">Stop</button>
-      </div>
-      <div class="overlay-status">Preparing smart fill...</div>
-      <div class="progress-bar">
-        <div class="progress-fill" style="width: 0%;"></div>
-      </div>
-      <ul class="overlay-history"></ul>
-    </div>
-  `;
-  const style = document.createElement("style");
-  style.id = "fake-filler-overlay-style";
-  style.textContent = `
-    #fake-filler-overlay {
-      position: fixed;
-      inset: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 2147483647;
-      background: rgba(4, 7, 13, 0.82);
-    }
-    .overlay-card {
-      background: rgba(4,7,13,0.9);
-      border-radius: 16px;
-      padding: 20px;
-      max-width: 360px;
-      width: 100%;
-      border: 1px solid rgba(255,255,255,0.06);
-      box-shadow: 0 30px 80px rgba(0,0,0,0.65);
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      text-align: left;
-      color: #F2F4F6;
-    }
-    .overlay-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 10px;
-    }
-    .overlay-title {
-      font-size: 1.2em;
-      font-weight: 700;
-      color: #25D366;
-    }
-    .overlay-detail {
-      font-size: 0.85em;
-      color: rgba(242,244,246,0.65);
-    }
-    .overlay-status {
-      font-size: 1em;
-      font-weight: 600;
-      color: #F2F4F6;
-      margin-bottom: 12px;
-    }
-    .overlay-history {
-      list-style: none;
-      padding: 0;
-      margin: 12px 0 0 0;
-      max-height: 160px;
-      overflow-y: auto;
-      border-top: 1px solid rgba(255,255,255,0.08);
-      padding-top: 8px;
-    }
-    .overlay-history li {
-      margin-bottom: 6px;
-      font-size: 0.85em;
-      color: rgba(242,244,246,0.75);
-    }
-    .progress-bar {
-      width: 100%;
-      height: 6px;
-      background: rgba(255,255,255,0.08);
-      border-radius: 999px;
-      overflow: hidden;
-      margin-bottom: 12px;
-    }
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(135deg, #25D366, #2BE07B);
-      transition: width 0.2s ease;
-      width: 0;
-    }
-    .overlay-stop-button {
-      background: transparent;
-      color: #ff6b7a;
-      border: 1px solid rgba(255,107,122,0.6);
-      border-radius: 8px;
-      padding: 6px 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s ease, color 0.2s ease;
-    }
-    .overlay-stop-button:hover {
-      background: rgba(255,107,122,0.15);
-      color: #fff;
-    }
-  `;
-  document.body.appendChild(style);
-  document.body.appendChild(overlay);
-  const stopButton = overlay.querySelector(".overlay-stop-button");
-  stopButton.addEventListener("click", () => {
-    if (smartFillSession) {
-      smartFillSession.stopRequested = true;
-      updateProgressOverlay("Cancellation requested", "Tunggu sampai AI berhenti");
-      // Resolve the promise to stop handleCustomProfile
-      if (smartFillSession.stopSignalResolver) {
-        smartFillSession.stopSignalResolver();
-        smartFillSession.stopSignalResolver = null;
-      }
-    }
-  });
-}
+  let overlay = document.getElementById("fake-filler-overlay");
+  let style = document.getElementById("fake-filler-overlay-style");
 
-function updateProgressOverlay(status, detail) {
-  const overlay = document.getElementById("fake-filler-overlay");
-  if (!overlay) return;
-  const statusEl = overlay.querySelector(".overlay-status");
-  if (statusEl && status) statusEl.textContent = status;
-  appendProgressHistory(status, detail);
-  recordHistoryEvent(status, detail);
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "fake-filler-overlay";
+    overlay.innerHTML = `
+      <div class="overlay-card">
+        <div class="overlay-header">
+          <div>
+            <div class="overlay-title">Smart Filler AI</div>
+            <div class="overlay-detail">Memperhatikan instruksi...</div>
+          </div>
+          <button type="button" class="overlay-stop-button" style="margin-right:5vw;">Stop</button>
+        </div>
+        <div class="overlay-status">Preparing smart fill...</div>
+        <div class="overlay-current-detail"></div> <!-- NEW ELEMENT FOR MORE DETAIL -->
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 0%;"></div>
+        </div>
+        <ul class="overlay-history"></ul>
+        <button type="button" class="overlay-close-button" title="Close">&times;</button> <!-- NEW CLOSE BUTTON -->
+      </div>
+    `;
+
+    style = document.createElement("style");
+    style.id = "fake-filler-overlay-style";
+    style.textContent = `
+      #fake-filler-overlay {
+        position: fixed;
+        inset: 12px;
+        display: none; /* Initially hidden */
+        align-items: center;
+        justify-content: center;
+        z-index: 2147483647;
+        background: rgba(4, 7, 13, 0.82);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      #fake-filler-overlay.visible {
+        display: flex; /* Override display:none for transitions */
+        opacity: 1;
+      }
+      .overlay-card {
+        background: rgba(4,7,13,0.9);
+        border-radius: 16px;
+        padding: 20px;
+        max-width: 360px;
+        width: 100%;
+        border: 1px solid rgba(255,255,255,0.06);
+        box-shadow: 0 30px 80px rgba(0,0,0,0.65);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        text-align: left;
+        color: #F2F4F6;
+        position: relative; /* For close button positioning */
+      }
+      .overlay-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 10px;
+      }
+      .overlay-title {
+        font-size: 1.2em;
+        font-weight: 700;
+        color: #25D366;
+      }
+      .overlay-detail {
+        font-size: 0.85em;
+        color: rgba(242,244,246,0.65);
+      }
+      .overlay-status {
+        font-size: 1em;
+        font-weight: 600;
+        color: #F2F4F6;
+        margin-bottom: 8px; /* Adjusted margin */
+      }
+      .overlay-current-detail { /* NEW STYLE */
+        font-size: 0.9em;
+        color: rgba(242,244,246,0.8);
+        margin-bottom: 12px;
+        max-height: 80px; /* Limit height for long details */
+        overflow-y: auto;
+        word-wrap: break-word;
+      }
+      .overlay-history {
+        list-style: none;
+        padding: 0;
+        margin: 12px 0 0 0;
+        max-height: 160px;
+        overflow-y: auto;
+        border-top: 1px solid rgba(255,255,255,0.08);
+        padding-top: 8px;
+      }
+      .overlay-history li {
+        margin-bottom: 6px;
+        font-size: 0.85em;
+        color: rgba(242,244,246,0.75);
+      }
+      .progress-bar {
+        width: 100%;
+        height: 6px;
+        background: rgba(255,255,255,0.08);
+        border-radius: 999px;
+        overflow: hidden;
+        margin-bottom: 12px;
+      }
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(135deg, #25D366, #2BE07B);
+        transition: width 0.2s ease;
+        width: 0;
+      }
+      .overlay-stop-button {
+        background: transparent;
+        color: #ff6b7a;
+        border: 1px solid rgba(255,107,122,0.6);
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s ease, color 0.2s ease;
+      }
+      .overlay-stop-button:hover {
+        background: rgba(255,107,122,0.15);
+        color: #fff;
+      }
+      .overlay-close-button { /* NEW STYLE */
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: none;
+        border: none;
+        font-size: 24px;
+        color: #aaa;
+        cursor: pointer;
+        line-height: 1;
+      }
+      .overlay-close-button:hover {
+        color: #fff;
+      }
+    `;
+    document.head.appendChild(style);
+    document.body.appendChild(overlay);
+
+    // Add event listeners for new buttons
+    const stopButton = overlay.querySelector(".overlay-stop-button");
+    stopButton.addEventListener("click", () => {
+      if (smartFillSession) {
+        smartFillSession.stopRequested = true;
+        updateProgressOverlay("Cancellation requested", "Tunggu sampai AI berhenti");
+        if (smartFillSession.stopSignalResolver) {
+          smartFillSession.stopSignalResolver();
+          smartFillSession.stopSignalResolver = null;
+        }
+      }
+    });
+
+    const closeButton = overlay.querySelector(".overlay-close-button");
+    closeButton.addEventListener("click", () => {
+        hideProgressOverlay();
+    });
+
+  }
+  return overlay;
 }
 
 function appendProgressHistory(status, detail) {
@@ -524,6 +557,39 @@ function recordHistoryEvent(status, detail) {
   }
 }
 
+/**
+ * Updates the progress overlay's status and detail.
+ * @param {string} status The main status message.
+ * @param {string} detail Optional: More detailed information to display.
+ */
+function updateProgressOverlay(status, detail) {
+  const overlay = document.getElementById("fake-filler-overlay");
+  if (!overlay) return;
+
+  const statusEl = overlay.querySelector(".overlay-status");
+  const detailEl = overlay.querySelector(".overlay-current-detail");
+  
+  if (statusEl && status) statusEl.textContent = status;
+  if (detailEl && detail) detailEl.textContent = detail;
+  else if (detailEl) detailEl.textContent = '';
+
+  appendProgressHistory(status, detail);
+  recordHistoryEvent(status, detail);
+}
+
+// Renamed from removeProgressOverlay
+function hideProgressOverlay() {
+  const overlay = document.getElementById("fake-filler-overlay");
+  if (overlay) overlay.classList.remove('visible'); // Hide it
+  // Do not remove style or session data here, as session might still be active in background
+}
+
+// New function to show the overlay
+function showProgressOverlay() {
+  const overlay = createProgressOverlay(); // Ensure it exists and get reference
+  if (overlay) overlay.classList.add('visible');
+}
+
 function updateProgressBar(ratio) {
   const overlay = document.getElementById("fake-filler-overlay");
   if (!overlay) return;
@@ -531,19 +597,6 @@ function updateProgressBar(ratio) {
   if (!fill) return;
   const percent = Math.min(100, Math.max(0, ratio * 100));
   fill.style.width = `${percent}%`;
-}
-
-function removeProgressOverlay() {
-  const overlay = document.getElementById("fake-filler-overlay");
-  const style = document.getElementById("fake-filler-overlay-style");
-  if (overlay) overlay.remove();
-  if (style) style.remove();
-  if (smartFillSession) {
-    smartFillSession.stopRequested = false;
-    smartFillSession.totalSteps = 0;
-    smartFillSession.completedSteps = 0;
-    smartFillSession.currentEntry = null;
-  }
 }
 
 function startHistoryEntry(questionText, platform) {
@@ -734,6 +787,24 @@ function updateAiButtonState(isProcessing) {
   }
 }
 
+// New helper function to manage progress overlay visibility
+function toggleProgressOverlay(show) {
+    let overlay = document.getElementById("fake-filler-overlay");
+    if (!overlay) {
+        overlay = createProgressOverlay(); // Ensure it exists
+    }
+
+    if (overlay) {
+        if (show === true) {
+            overlay.classList.add('visible');
+        } else if (show === false) {
+            overlay.classList.remove('visible');
+        } else { // Toggle if 'show' is undefined
+            overlay.classList.toggle('visible');
+        }
+    }
+}
+
 /**
  * Creates a floating action button to trigger the Smart Fill.
  */
@@ -747,6 +818,10 @@ async function createTriggerOverlay() {
   if (!shouldShowOverlay) return;
   if (document.getElementById('smart-fill-trigger-container')) return;
 
+  // New icon for toggling the progress overlay
+  const progressOverlayIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M200-200v-560h560v560H200Zm0 80h560q33 0 56.5-23.5T840-200v-560q0-33-23.5-56.5T760-840H200q-33 0-56.5 23.5T80-760v560q0 33 23.5 56.5T200-120Zm80-80h400v-400H280v400Zm-80 0v-560 560Z"/></svg>`;
+
+
   const triggerContainer = document.createElement("div");
   triggerContainer.id = "smart-fill-trigger-container";
   triggerContainer.innerHTML = `
@@ -757,6 +832,7 @@ async function createTriggerOverlay() {
     <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">${fullscreenEnterIcon}</a>
     <a href="#" id="reset-session-button" class="social-icon" title="Reset Session">${resetSessionIcon}</a>
     <a href="#" id="chat-overlay-button" class="social-icon" title="AI Chat">${chatIcon}</a>
+    <a href="#" id="toggle-progress-overlay-button" class="social-icon" title="Show/Hide Progress">${progressOverlayIcon}</a> <!-- NEW BUTTON -->
   `;
 
   const style = document.createElement("style");
@@ -791,7 +867,7 @@ async function createTriggerOverlay() {
         transform: scale(1);
     }
     
-    /* Correctly arrange all 4 buttons in a 90-degree arc */
+    /* Correctly arrange all 5 buttons in a 90-degree arc */
     #smart-fill-trigger-container.active #run-ai-button {
       transform: translate(0, -80px); /* Top */
       transition-delay: 0.05s;
@@ -804,10 +880,15 @@ async function createTriggerOverlay() {
       transform: translate(-80px, 0); /* Left */
       transition-delay: 0.15s;
     }
-     #smart-fill-trigger-container.active #reset-session-button {
+    #smart-fill-trigger-container.active #reset-session-button {
       transform: translate(-70px, 40px); /* Custom position below left */
       transition-delay: 0.2s;
     }
+    #smart-fill-trigger-container.active #toggle-progress-overlay-button { /* NEW BUTTON POSITION */
+      transform: translate(30px, -70px); /* Adjust as needed for spacing */
+      transition-delay: 0.25s;
+    }
+
 
     .social-icon:hover { 
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2); 
@@ -818,6 +899,7 @@ async function createTriggerOverlay() {
     #fullscreen-button.active, #fullscreen-button.active:hover { background-color: #81d4fa; }
     #reset-session-button:hover { background: #ffecb3; }
     #chat-overlay-button:hover { background: #d1c4e9; }
+    #toggle-progress-overlay-button:hover { background: #e0f2f7; } /* New button hover */
   `;
 
   document.head.appendChild(style);
@@ -836,7 +918,9 @@ async function createTriggerOverlay() {
       ensureSmartFillSession();
       if (smartFillSession) smartFillSession.stopRequested = true;
       updateAiButtonState(false);
+      toggleProgressOverlay(false); // Hide overlay if stopping
     } else {
+      toggleProgressOverlay(true); // Show overlay before starting
       doSmartFill();
     }
   }, { capture: true });
@@ -861,6 +945,13 @@ async function createTriggerOverlay() {
     if (chatOverlay) chatOverlay.style.display = 'flex';
     triggerContainer.classList.remove('active');
   });
+
+  // Listener for toggling progress overlay from outside the smart fill process
+  document.getElementById('toggle-progress-overlay-button').addEventListener('click', (e) => { // NEW LISTENER
+    e.preventDefault();
+    toggleProgressOverlay(); // Toggle visibility
+  });
+
 
   updateFullscreenButtonState();
   updateAiButtonState(false);
@@ -1064,12 +1155,10 @@ async function doSmartFill() {
   updateAiButtonState(true); // Set button to "Cancel" state
   console.log("--- Smart Fill Initialized ---");
   ensureSmartFillSession();
-  const showOverlay = await getOverlayPreference();
-  if (showOverlay) {
-    createProgressOverlay();
-  } else {
-    removeProgressOverlay();
-  }
+  
+  // Always ensure the overlay exists, then show it
+  showProgressOverlay(); 
+  
   let encounteredError = null;
 
   const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
@@ -1089,19 +1178,14 @@ async function doSmartFill() {
         showContentToast(`An error occurred: ${error.message}`, 'error');
     } finally {
         console.log("--- Smart Fill Finally Block ---");
-        // Cleanup is now handled directly by handleCustomProfile when its stopPromise resolves.
-        // This block only cleans up general UI and resets session state.
         if (smartFillSession) {
             if (smartFillSession.stopRequested) {
                  updateProgressOverlay("Smart fill stopped", "Smart form filling stopped by user.");
             } else {
-                // This branch implies the continuous process might have completed without explicit stop,
-                // which is less likely for quizzes, but still cleans up.
                 updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
             }
-            // Ensure UI is removed
-            removeProgressOverlay();
         }
+        hideProgressOverlay(); // Hide the overlay instead of removing
         updateAiButtonState(false); // Reset button state
         smartFillSession = null; // Clear session state for next run
     }
@@ -1115,7 +1199,7 @@ async function doSmartFill() {
     if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) {
       showContentToast("Smart Fill currently supports Google Forms, wayground.com, quizziz.com, kahoot.it, and the CBT instance.", 'error');
       console.warn("Smart Fill aborted: Unsupported host.");
-      removeProgressOverlay();
+      hideProgressOverlay(); // Hide on abort
       updateAiButtonState(false); // Reset button state
       return;
     }
@@ -1138,9 +1222,11 @@ async function doSmartFill() {
         if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
           updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
           updateProgressBar(1);
-          setTimeout(removeProgressOverlay, 600);
+          // Small delay before hiding after completion
+          setTimeout(hideProgressOverlay, 600);
         } else {
-          setTimeout(removeProgressOverlay, 1500);
+          // If stopped or error, hide after a longer delay
+          setTimeout(hideProgressOverlay, 1500);
         }
       }
       updateAiButtonState(false); // Reset button state when done
@@ -1257,12 +1343,11 @@ async function handleCustomProfile(profile) {
 
   ensureSmartFillSession();
   const showOverlay = await getOverlayPreference();
-  if (showOverlay) {
-    createProgressOverlay();
-  } else {
-    removeProgressOverlay();
-  }
-
+      if (showOverlay) {
+        createProgressOverlay();
+      } else {
+        hideProgressOverlay();
+      }
   const allQuestions = questionListContainer.querySelectorAll(profile.questionBlock);
   smartFillSession.totalSteps = allQuestions.length;
   console.log(`Found ${allQuestions.length} questions using custom profile.`);
@@ -1278,7 +1363,7 @@ async function handleCustomProfile(profile) {
     await new Promise(resolve => setTimeout(resolve, 500));
   }
 
-  removeProgressOverlay();
+  hideProgressOverlay();
   updateAiButtonState(false);
   console.log("Custom profile smart fill process completed.");
 }
@@ -1586,7 +1671,7 @@ async function handleQuizPlatforms(host) {
       showContentToast('Pertanyaan ini sudah dijawab sebelumnya.', 'info');
       // We need to stop the process gracefully
       if (smartFillSession) {
-          removeProgressOverlay();
+          hideProgressOverlay();
       }
       updateAiButtonState(false);
       return;
