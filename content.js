@@ -7,20 +7,51 @@ if (window.hasRunContentScript) {
 
 function updateTriggerColorVariable(variableName, value) {
   if (!variableName || typeof value !== 'string') return;
-  document.documentElement.style.setProperty(variableName, value);
-  const triggerContainer = document.getElementById("smart-fill-trigger-container");
-  if (triggerContainer) {
-    triggerContainer.style.setProperty(variableName, value);
+  
+  console.log(`[Content.js] updateTriggerColorVariable called. Variable: ${variableName}, Value: ${value}`);
+
+  if (variableName === '--trigger-button-background-color') {
+    const triggerButton = document.getElementById('smart-fill-trigger-button');
+    if (triggerButton) {
+      console.log(`[Content.js] Before update, Trigger Button Background: ${triggerButton.style.background}`);
+      triggerButton.style.background = value;
+      console.log(`[Content.js] After update, Trigger Button Background: ${triggerButton.style.background}`);
+    } else {
+      console.warn("[Content.js] Trigger button not found for background color update.");
+    }
+    const iconSpans = document.querySelectorAll('#smart-fill-trigger-button .smart-fill-icon span');
+    iconSpans.forEach((span, index) => {
+      console.log(`[Content.js] Icon Span ${index} Background (should not change): ${span.style.background}`);
+    });
+  } else if (variableName === '--trigger-icon-span-background-color') {
+    const iconSpans = document.querySelectorAll('#smart-fill-trigger-button .smart-fill-icon span');
+    if (iconSpans.length > 0) {
+      iconSpans.forEach((span, index) => {
+        console.log(`[Content.js] Before update, Icon Span ${index} Background: ${span.style.background}`);
+        span.style.background = value;
+        console.log(`[Content.js] After update, Icon Span ${index} Background: ${span.style.background}`);
+      });
+    } else {
+      console.warn("[Content.js] Icon spans not found for background color update.");
+    }
+    const triggerButton = document.getElementById('smart-fill-trigger-button');
+    if (triggerButton) {
+      console.log(`[Content.js] Trigger Button Background (should not change): ${triggerButton.style.background}`);
+    }
   }
 }
 
 function updateTriggerButtonOpacityVariable(value) {
   if (value === undefined || value === null) return;
   const numericValue = Math.min(1, Math.max(0, parseFloat(value) || 0)); // value is 0-1
+  console.log(`[Content.js] updateTriggerButtonOpacityVariable called with value: ${numericValue}`); // Debug log
   document.documentElement.style.setProperty('--smart-fill-trigger-container-opacity', numericValue);
   const triggerContainer = document.getElementById("smart-fill-trigger-container");
   if (triggerContainer) {
     triggerContainer.style.opacity = numericValue; // Directly set opacity for the container
+    console.log(`[Content.js] Trigger container opacity set to: ${numericValue}`); // Debug log
+  } else {
+    console.warn("[Content.js] Trigger container not found when trying to update opacity."); // Debug log
   }
 }
 
@@ -42,9 +73,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ status: 'color updated' });
     return true; // Indicate that response will be sent asynchronously
   } else if (request.action === 'updateTriggerButtonOpacity') { // NEW: Handle trigger button opacity updates
-    console.log(`[Content.js] Handling updateTriggerButtonOpacity: opacity=${request.opacity}`);
+    console.log(`[Content.js] Message: updateTriggerButtonOpacity received with opacity: ${request.opacity}`); // Debug log
     updateTriggerButtonOpacityVariable(request.opacity);
-    console.log(`[Content.js] Set trigger button opacity to ${request.opacity}`);
     sendResponse({ status: 'trigger button opacity updated' });
     return true;
   }
@@ -890,6 +920,7 @@ async function createTriggerOverlay() {
 
   const triggerContainer = document.createElement("div");
   triggerContainer.id = "smart-fill-trigger-container";
+  console.log("[Content.js] Created #smart-fill-trigger-container."); // Debug log
   // Set CSS variables for custom colors
   triggerContainer.style.setProperty('--trigger-button-background-color', triggerButtonBgColor);
   triggerContainer.style.setProperty('--trigger-icon-span-background-color', triggerIconSpanColor);
@@ -997,7 +1028,7 @@ async function createTriggerOverlay() {
       updateAiButtonState(false);
       toggleProgressOverlay(false); // Hide overlay if stopping
     } else {
-      toggleProgressOverlay(true); // Show overlay before starting
+      toggleProgressOverlay(false); // Show overlay before starting
       doSmartFill();
     }
   }, { capture: true });
