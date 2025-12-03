@@ -76,6 +76,14 @@ function initContentScript() {
       updateTriggerButtonOpacityVariable(request.opacity);
       sendResponse({ status: 'trigger button opacity updated' });
       // Removed return true;
+    } else if (request.action === 'updateFloatingMenuState') {
+      if (request.show) {
+        createTriggerOverlay();
+      } else {
+        const container = document.getElementById("smart-fill-trigger-container");
+        if (container) container.remove();
+      }
+      sendResponse({ status: 'floating menu state updated' });
     }
     // --- Original Message Listener ---
     if (request.action === 'showContentToast' && request.toast) {
@@ -1202,22 +1210,20 @@ Response (number only or "NONE"):`;
    */
   async function createTriggerOverlay() {
     console.log("[Content.js] createTriggerOverlay function started.");
-    const { customProfiles, triggerButtonBgColor, triggerIconSpanColor, triggerButtonOpacity } = await chrome.storage.local.get({
+    const { customProfiles, triggerButtonBgColor, triggerIconSpanColor, triggerButtonOpacity, showFloatingMenu } = await chrome.storage.local.get({
       customProfiles: {},
       triggerButtonBgColor: '#EDE1FF', // Default
       triggerIconSpanColor: '#5E3BAE', // Default
-      triggerButtonOpacity: 100 // Default (0-100 scale)
+      triggerButtonOpacity: 100, // Default (0-100 scale)
+      showFloatingMenu: true // Default true
     });
 
-    const host = window.location.hostname;
-    const hasCustomProfile = !!customProfiles[host];
-    const supportedPlatforms = ['docs.google.com', 'wayground.com', 'quizziz.com', 'kahoot.it', 'play.kahoot.it', '115.124.76.241'];
-    const shouldShowOverlay = hasCustomProfile || supportedPlatforms.some(p => host.includes(p));
-
-    if (!shouldShowOverlay) {
-      console.log("[Content.js] Not showing trigger overlay: Host not supported or no custom profile.");
+    if (showFloatingMenu === false) {
+      console.log("[Content.js] Not showing trigger overlay: Disabled in settings.");
       return;
     }
+
+    // Always render the floating menu unless the user explicitly hides it in settings.
     if (document.getElementById('smart-fill-trigger-container')) {
       console.log("[Content.js] Trigger overlay already exists.");
       return;

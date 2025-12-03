@@ -33,6 +33,7 @@ const openAiSettingsEl = document.getElementById("openai-settings");
 const darkModeToggle = document.getElementById("dark-mode-toggle");
 const triggerButtonOpacityInput = document.getElementById("overlay-opacity");
 const triggerButtonOpacityValueSpan = document.getElementById("trigger-button-opacity-value");
+const showFloatingMenuCheckbox = document.getElementById("show-floating-menu");
 const htmlRoot = document.documentElement;
 const manageProfilesButton = document.getElementById("manage-profiles");
 const viewHistoryButton = document.getElementById("view-history");
@@ -104,8 +105,9 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Load other non-activation-related settings from storage
-  chrome.storage.local.get(["autoRun", "fillMode", "personalizedData", "personalFillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity"], (result) => { // Updated storage key
+  chrome.storage.local.get(["autoRun", "fillMode", "personalizedData", "personalFillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity", "showFloatingMenu"], (result) => { // Updated storage key
     autoRunCheckbox.checked = !!result.autoRun;
+    showFloatingMenuCheckbox.checked = result.showFloatingMenu !== false; // Default to true
 
     // Load and render Personalized Data
     renderPersonalDataFields(result.personalizedData);
@@ -216,6 +218,13 @@ document.getElementById("save-ui-settings").addEventListener("click", () => {
 // Save auto-run setting
 autoRunCheckbox.addEventListener("change", () => {
   chrome.storage.local.set({ autoRun: autoRunCheckbox.checked });
+});
+
+// Save Show Floating Menu setting
+showFloatingMenuCheckbox.addEventListener("change", () => {
+  const show = showFloatingMenuCheckbox.checked;
+  chrome.storage.local.set({ showFloatingMenu: show });
+  sendFloatingMenuStateToContentScript(show);
 });
 
 // Save Fill Mode setting
@@ -437,6 +446,24 @@ async function sendTriggerButtonOpacityUpdateToContentScript(opacity) {
     });
   } catch (error) {
     // Silently fail if content script is not loaded - this is expected behavior
+    console.log('[Popup.js] Content script not loaded on this page (expected for some pages)');
+  }
+}
+
+async function sendFloatingMenuStateToContentScript(show) {
+  console.log(`[Popup.js] Sending floating menu state: show=${show}`);
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab || !tab.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+      return;
+    }
+
+    await chrome.tabs.sendMessage(tab.id, {
+      action: 'updateFloatingMenuState',
+      show: show
+    });
+  } catch (error) {
     console.log('[Popup.js] Content script not loaded on this page (expected for some pages)');
   }
 }
