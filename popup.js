@@ -30,7 +30,8 @@ const saveOpenAiButton = document.getElementById("save-openai");
 const geminiSettingsEl = document.getElementById("gemini-settings");
 const openAiSettingsEl = document.getElementById("openai-settings");
 const darkModeToggle = document.getElementById("dark-mode-toggle");
-const overlayToggle = document.getElementById("overlay-toggle");
+const triggerButtonOpacityInput = document.getElementById("overlay-opacity");
+const triggerButtonOpacityValueSpan = document.getElementById("overlay-opacity-value");
 const htmlRoot = document.documentElement;
 const manageProfilesButton = document.getElementById("manage-profiles");
 const viewHistoryButton = document.getElementById("view-history");
@@ -62,13 +63,14 @@ const profilesList = document.getElementById('profiles-list');
 const addNewProfileButton = document.getElementById('add-new-profile');
 
 async function sendColorUpdateToContentScript(elementId, color) {
+  console.log(`[Popup.js] Attempting to send color update: ${elementId} = ${color}`);
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab && tab.id) {
     chrome.tabs.sendMessage(tab.id, {
       action: 'updateColor',
       elementId: elementId,
       color: color
-    }).catch(error => console.warn("Could not send color update to content script:", error));
+    }).catch(error => console.error("[Popup.js] Error sending color update to content script:", error));
   }
 }
 
@@ -91,8 +93,9 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Load other non-activation-related settings from storage
-  chrome.storage.local.get(["autoRun", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "showOverlay"], (result) => {
+  chrome.storage.local.get(["autoRun", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity"], (result) => { // Updated storage key
     autoRunCheckbox.checked = !!result.autoRun;
+    console.log("[Popup.js] Loaded settings from storage:", result);
     
     // Initialize Coloris for Trigger Button Background
     Coloris({
@@ -111,7 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
     document.getElementById("trigger-button-bg-color").value = result.triggerButtonBgColor || '#EDE1FF';
-    document.getElementById("trigger-button-bg-color").dispatchEvent(new Event('input')); // Trigger Coloris update
+    sendColorUpdateToContentScript('trigger-button-bg-color', document.getElementById("trigger-button-bg-color").value);
 
     // Initialize Coloris for Trigger Icon Span Color
     Coloris({
@@ -130,9 +133,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
     document.getElementById("trigger-icon-span-color").value = result.triggerIconSpanColor || '#5E3BAE';
-    document.getElementById("trigger-icon-span-color").dispatchEvent(new Event('input')); // Trigger Coloris update
-
-
+    sendColorUpdateToContentScript('trigger-icon-span-color', document.getElementById("trigger-icon-span-color").value);
     if (result.apiKeys && Array.isArray(result.apiKeys)) {
       apiKeysTextarea.value = result.apiKeys.map(item => item.key).join('\n');
     }
@@ -153,8 +154,10 @@ document.addEventListener("DOMContentLoaded", () => {
     applyTheme(themeMode === "dark");
     darkModeToggle.checked = themeMode === "dark";
 
-    const showOverlay = result.showOverlay !== false;
-    overlayToggle.checked = showOverlay;
+    const triggerButtonOpacity = result.triggerButtonOpacity !== undefined ? result.triggerButtonOpacity : 100; // Default to 100%
+    triggerButtonOpacityInput.value = triggerButtonOpacity;
+    triggerButtonOpacityValueSpan.textContent = `${triggerButtonOpacity}%`;
+    sendTriggerButtonOpacityUpdateToContentScript(parseFloat(triggerButtonOpacity) / 100); // Updated function call
 
     // Apply theme to Coloris.js picker as well
     Coloris.set('themeMode', darkModeToggle.checked ? 'dark' : 'light');
@@ -165,7 +168,13 @@ document.addEventListener("DOMContentLoaded", () => {
 document.getElementById("save-ui-settings").addEventListener("click", () => {
   const triggerButtonBgColor = document.getElementById("trigger-button-bg-color").value;
   const triggerIconSpanColor = document.getElementById("trigger-icon-span-color").value;
-  chrome.storage.local.set({ triggerButtonBgColor: triggerButtonBgColor, triggerIconSpanColor: triggerIconSpanColor }, () => {
+  const triggerButtonOpacity = parseInt(triggerButtonOpacityInput.value); // Corrected source and variable name
+
+  chrome.storage.local.set({ 
+    triggerButtonBgColor: triggerButtonBgColor, 
+    triggerIconSpanColor: triggerIconSpanColor,
+    triggerButtonOpacity: triggerButtonOpacity // Corrected storage key
+  }, () => {
     const saveButton = document.getElementById("save-ui-settings");
     saveButton.textContent = "Saved!";
     setTimeout(() => {
@@ -285,9 +294,24 @@ darkModeToggle.addEventListener("change", () => {
   chrome.storage.local.set({ themeMode: isDark ? "dark" : "light" });
 });
 
-overlayToggle.addEventListener("change", () => {
-  chrome.storage.local.set({ showOverlay: overlayToggle.checked });
+triggerButtonOpacityInput.addEventListener("input", () => {
+  const opacityValue = triggerButtonOpacityInput.value;
+  triggerButtonOpacityValueSpan.textContent = `${opacityValue}%`;
+  chrome.storage.local.set({ triggerButtonOpacity: parseInt(opacityValue) });
+  sendTriggerButtonOpacityUpdateToContentScript(parseFloat(opacityValue) / 100);
 });
+
+// Repurposed function for trigger button opacity
+async function sendTriggerButtonOpacityUpdateToContentScript(opacity) {
+  console.log(`[Popup.js] Attempting to send trigger button opacity update: ${opacity}`);
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab && tab.id) {
+    chrome.tabs.sendMessage(tab.id, {
+      action: 'updateTriggerButtonOpacity', // New action name for content script
+      opacity: opacity
+    }).catch(error => console.error("[Popup.js] Error sending trigger button opacity update to content script:", error));
+  }
+}
 
 viewHistoryButton.addEventListener("click", () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('history.html') });

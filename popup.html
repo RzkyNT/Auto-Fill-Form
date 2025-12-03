@@ -539,9 +539,16 @@
         </label>
           <h4 style="margin-top: 10px;">UI Customization</h4>
           <label for="trigger-button-bg-color">Trigger Button Background Color</label>
-          <input type="text" id="trigger-button-bg-color" class="api-key-input" data-coloris value="#EDE1FF" />
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="text" id="trigger-button-bg-color" class="api-key-input" data-coloris value="var()" style="flex-grow: 1;" />
+          </div>
           <label for="trigger-icon-span-color" style="margin-top: 10px;">Trigger Icon Bar Color</label>
-          <input type="text" id="trigger-icon-span-color" class="api-key-input" data-coloris value="#5E3BAE" />
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="text" id="trigger-icon-span-color" class="api-key-input" data-coloris value="" style="flex-grow: 1;" />
+          </div>
+          <label for="overlay-opacity" style="margin-top: 10px;">Trigger Button Opacity</label>
+          <input type="range" id="overlay-opacity" min="0" max="100" value="70" style="width: 100%;" />
+          <span id="trigger-button-opacity-value" style="display: block; text-align: right; font-size: 0.85em; color: var(--color-muted);">70%</span>
           <button id="save-ui-settings" class="save-button">Save UI Settings</button>
         </div>
 

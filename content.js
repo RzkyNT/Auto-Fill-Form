@@ -1,20 +1,52 @@
 if (window.hasRunContentScript) {
-  console.warn("Content script already run. Skipping re-initialization.");
+  console.warn("[Content.js] Content script already run. Skipping re-initialization.");
 } else {
   window.hasRunContentScript = true;
   initContentScript(); // <== jalankan semua logic di sini
 }
+
+function updateTriggerColorVariable(variableName, value) {
+  if (!variableName || typeof value !== 'string') return;
+  document.documentElement.style.setProperty(variableName, value);
+  const triggerContainer = document.getElementById("smart-fill-trigger-container");
+  if (triggerContainer) {
+    triggerContainer.style.setProperty(variableName, value);
+  }
+}
+
+function updateTriggerButtonOpacityVariable(value) {
+  if (value === undefined || value === null) return;
+  const numericValue = Math.min(1, Math.max(0, parseFloat(value) || 0)); // value is 0-1
+  document.documentElement.style.setProperty('--smart-fill-trigger-container-opacity', numericValue);
+  const triggerContainer = document.getElementById("smart-fill-trigger-container");
+  if (triggerContainer) {
+    triggerContainer.style.opacity = numericValue; // Directly set opacity for the container
+  }
+}
+
+// NEW FUNCTION
 function initContentScript() {
+  console.log("[Content.js] initContentScript function started.");
+
 // --- Message Listener for real-time color updates from popup ---
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log("[Content.js] Message received from background/popup:", request);
   if (request.action === 'updateColor') {
+    console.log(`[Content.js] Handling updateColor: elementId=${request.elementId}, color=${request.color}`);
     if (request.elementId === 'trigger-button-bg-color') {
-      document.documentElement.style.setProperty('--trigger-button-background-color', request.color);
+      updateTriggerColorVariable('--trigger-button-background-color', request.color);
     } else if (request.elementId === 'trigger-icon-span-color') {
-      document.documentElement.style.setProperty('--trigger-icon-span-background-color', request.color);
+      updateTriggerColorVariable('--trigger-icon-span-background-color', request.color);
+      return true; // Indicate that response will be sent asynchronously
     }
     sendResponse({ status: 'color updated' });
     return true; // Indicate that response will be sent asynchronously
+  } else if (request.action === 'updateTriggerButtonOpacity') { // NEW: Handle trigger button opacity updates
+    console.log(`[Content.js] Handling updateTriggerButtonOpacity: opacity=${request.opacity}`);
+    updateTriggerButtonOpacityVariable(request.opacity);
+    console.log(`[Content.js] Set trigger button opacity to ${request.opacity}`);
+    sendResponse({ status: 'trigger button opacity updated' });
+    return true;
   }
   // --- Original Message Listener ---
   if (request.action === 'showContentToast' && request.toast) {
@@ -26,6 +58,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ status: 'guided_selection_started' });
   }
   return true; 
+});
+
+// Initial application of settings when content script loads
+chrome.storage.local.get(["triggerButtonBgColor", "triggerIconSpanColor", "triggerButtonOpacity"], (result) => { // Updated storage key
+  console.log("[Content.js] Loaded initial settings from storage:", result);
+  if (result.triggerButtonBgColor) {
+    updateTriggerColorVariable('--trigger-button-background-color', result.triggerButtonBgColor);
+    console.log(`[Content.js] Initial --trigger-button-background-color set to ${result.triggerButtonBgColor}`);
+  }
+  if (result.triggerIconSpanColor) {
+    updateTriggerColorVariable('--trigger-icon-span-background-color', result.triggerIconSpanColor);
+    console.log(`[Content.js] Initial --trigger-icon-span-background-color set to ${result.triggerIconSpanColor}`);
+  }
+
+  const initialTriggerButtonOpacity = result.triggerButtonOpacity !== undefined ? parseFloat(result.triggerButtonOpacity) / 100 : 1; // Default to 1 (100%)
+  updateTriggerButtonOpacityVariable(initialTriggerButtonOpacity); // Apply to the trigger button
+  console.log(`[Content.js] Initial trigger button opacity set to ${initialTriggerButtonOpacity}`);
 });
 
 // Listen for manual trigger
@@ -370,10 +419,12 @@ function formatAiResponseForDisplay(text) {
  * If the overlay doesn't exist, it creates it. If it exists, it ensures it's configured.
  */
 function createProgressOverlay() {
+  console.log("[Content.js] createProgressOverlay function started.");
   let overlay = document.getElementById("fake-filler-overlay");
   let style = document.getElementById("fake-filler-overlay-style");
 
   if (!overlay) {
+    console.log("[Content.js] Creating new fake-filler-overlay.");
     overlay = document.createElement("div");
     overlay.id = "fake-filler-overlay";
     overlay.innerHTML = `
@@ -405,13 +456,11 @@ function createProgressOverlay() {
         align-items: center;
         justify-content: center;
         z-index: 2147483647;
-        background: rgba(4, 7, 13, 0.82);
-        opacity: 0;
-        transition: opacity 0.3s ease;
+        background: rgba(4, 7, 13, 0.7); /* Reverted to fixed rgba background */
+        transition: opacity 0.3s ease; /* Maintain transition for visibility changes */
       }
       #fake-filler-overlay.visible {
         display: flex; /* Override display:none for transitions */
-        opacity: 1;
       }
       .overlay-card {
         background: rgba(4,7,13,0.9);
@@ -816,17 +865,25 @@ function toggleProgressOverlay(show) {
  * Creates a floating action button to trigger the Smart Fill.
  */
 async function createTriggerOverlay() {
+  console.log("[Content.js] createTriggerOverlay function started.");
   const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
   const host = window.location.hostname;
   const hasCustomProfile = !!customProfiles[host];
   const supportedPlatforms = ['docs.google.com', 'wayground.com', 'quizziz.com', 'kahoot.it', 'play.kahoot.it', '115.124.76.241'];
   const shouldShowOverlay = hasCustomProfile || supportedPlatforms.some(p => host.includes(p));
 
-  if (!shouldShowOverlay) return;
-  if (document.getElementById('smart-fill-trigger-container')) return;
+  if (!shouldShowOverlay) {
+    console.log("[Content.js] Not showing trigger overlay: Host not supported or no custom profile.");
+    return;
+  }
+  if (document.getElementById('smart-fill-trigger-container')) {
+    console.log("[Content.js] Trigger overlay already exists.");
+    return;
+  }
 
   // Retrieve custom colors from storage
   const { triggerButtonBgColor = '#EDE1FF', triggerIconSpanColor = '#5E3BAE' } = await chrome.storage.local.get(['triggerButtonBgColor', 'triggerIconSpanColor']);
+  console.log(`[Content.js] Retrieved trigger colors: Button=${triggerButtonBgColor}, Icon=${triggerIconSpanColor}`);
 
   // New icon for toggling the progress overlay
   const progressOverlayIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M200-200v-560h560v560H200Zm0 80h560q33 0 56.5-23.5T840-200v-560q0-33-23.5-56.5T760-840H200q-33 0-56.5 23.5T80-760v560q0 33 23.5 56.5T200-120Zm80-80h400v-400H280v400Zm-80 0v-560 560Z"/></svg>`;
@@ -836,6 +893,7 @@ async function createTriggerOverlay() {
   // Set CSS variables for custom colors
   triggerContainer.style.setProperty('--trigger-button-background-color', triggerButtonBgColor);
   triggerContainer.style.setProperty('--trigger-icon-span-background-color', triggerIconSpanColor);
+  console.log(`[Content.js] Set triggerContainer CSS variables: --trigger-button-background-color=${triggerButtonBgColor}, --trigger-icon-span-background-color=${triggerIconSpanColor}`);
 
   triggerContainer.innerHTML = `
     <button id="smart-fill-trigger-button">
@@ -854,6 +912,8 @@ async function createTriggerOverlay() {
     #smart-fill-trigger-container {
       position: fixed; bottom: 20px; right: 20px; z-index: 2147483645;
       width: 64px; height: 64px; display: flex; justify-content: center; align-items: center;
+      opacity: var(--smart-fill-trigger-container-opacity, 1); /* Apply opacity from variable */
+      transition: opacity 0.3s ease; /* Add transition for smooth changes */
     }
     #smart-fill-trigger-button {
       width: 100%; height: 100%; background: var(--trigger-button-background-color, #EDE1FF); /* Use CSS variable */
@@ -898,7 +958,7 @@ async function createTriggerOverlay() {
       transition-delay: 0.15s;
     }
     #smart-fill-trigger-container.active #reset-session-button {
-      transform: translate(-57px, -115px); /* Custom position below left */
+      transform: translate(-107px, -107px); /* Custom position below left */
       transition-delay: 0.2s;
     }
     #smart-fill-trigger-container.active #toggle-progress-overlay-button { /* NEW BUTTON POSITION */
