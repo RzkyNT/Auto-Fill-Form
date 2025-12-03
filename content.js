@@ -1526,6 +1526,7 @@ function showReviewPanel(proposedAnswers) {
                 color: #F2F4F6;
                 font-size: 1em;
                 resize: vertical;
+                box-sizing: border-box; /* FIX: Prevents overflow */
             }
             .review-panel-footer {
                 padding: 15px 25px;
@@ -1539,6 +1540,48 @@ function showReviewPanel(proposedAnswers) {
             .review-panel-button:hover { opacity: 0.85; }
             #review-apply-btn { background: #25D366; color: #04070D; }
             #review-cancel-btn { background: #11161C; color: #F2F4F6; border: 1px solid rgba(255,255,255,0.1);}
+
+            /* Universal Custom Checkbox Style */
+            .custom-checkbox-container {
+                display: inline-flex;
+                align-items: center;
+                cursor: pointer;
+                gap: 8px;
+                -webkit-user-select: none; user-select: none;
+            }
+            .custom-checkbox-container input[type="checkbox"] {
+                display: none;
+            }
+            .custom-checkbox-container .checkmark {
+                width: 18px;
+                height: 18px;
+                background-color: #11161C;
+                border: 2px solid rgba(255, 255, 255, 0.25);
+                border-radius: 4px;
+                transition: all 0.2s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .custom-checkbox-container .checkmark::after {
+                content: '';
+                display: none;
+                width: 5px;
+                height: 10px;
+                border: solid #0B0F14;
+                border-width: 0 3px 3px 0;
+                transform: rotate(45deg) translate(-1px, -1px);
+            }
+            .custom-checkbox-container input[type="checkbox"]:checked ~ .checkmark {
+                background-color: #25D366;
+                border-color: #25D366;
+            }
+            .custom-checkbox-container input[type="checkbox"]:checked ~ .checkmark::after {
+                display: block;
+            }
+            .custom-checkbox-container:hover .checkmark {
+                border-color: rgba(37, 211, 102, 0.6);
+            }
         `;
         document.head.appendChild(style);
     }
@@ -1555,8 +1598,9 @@ function showReviewPanel(proposedAnswers) {
                         <strong>Question ${index + 1}:</strong>
                         <p style="white-space: pre-wrap; font-weight: normal; color: rgba(242, 244, 246, 0.8); margin-top: 5px;">${escapeHtml(answer.question)}</p>
                     </div>
-                    <label style="color: #bbb; cursor: pointer;">
+                    <label class="custom-checkbox-container" style="color: #bbb;">
                         <input type="checkbox" class="review-include-checkbox" checked>
+                        <span class="checkmark"></span>
                         Include
                     </label>
                 </div>

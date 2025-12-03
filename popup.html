@@ -475,6 +475,48 @@
       text-transform: uppercase;
     }
 
+    
+            /* Universal Custom Checkbox Style */
+            .custom-checkbox-container {
+                display: inline-flex;
+                align-items: center;
+                cursor: pointer;
+                gap: 8px;
+                -webkit-user-select: none; user-select: none;
+            }
+            .custom-checkbox-container input[type="checkbox"] {
+                display: none;
+            }
+            .custom-checkbox-container .checkmark {
+                width: 18px;
+                height: 18px;
+                background-color: #11161C;
+                border: 2px solid rgba(255, 255, 255, 0.25);
+                border-radius: 4px;
+                transition: all 0.2s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .custom-checkbox-container .checkmark::after {
+                content: '';
+                display: none;
+                width: 5px;
+                height: 10px;
+                border: solid #0B0F14;
+                border-width: 0 3px 3px 0;
+                transform: rotate(45deg) translate(-1px, -1px);
+            }
+            .custom-checkbox-container input[type="checkbox"]:checked ~ .checkmark {
+                background-color: #25D366;
+                border-color: #25D366;
+            }
+            .custom-checkbox-container input[type="checkbox"]:checked ~ .checkmark::after {
+                display: block;
+            }
+            .custom-checkbox-container:hover .checkmark {
+                border-color: rgba(37, 211, 102, 0.6);
+            }
   </style>
 </head>
 <body>
@@ -544,7 +586,7 @@
             </label>
             <p style="margin-top: 2px;">Langsung mengisi jawaban ke dalam form.</p>
           </div>
-          <div class="provider-card" style="padding-top: 5px; padding-bottom: 5px;">
+          <div class="provider-card">
             <label>
               <input type="radio" name="fill-mode" value="review" /> Ask Mode (Tinjau Dulu)
             </label>
