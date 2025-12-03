@@ -93,8 +93,13 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Load other non-activation-related settings from storage
-  chrome.storage.local.get(["autoRun", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity"], (result) => { // Updated storage key
+  chrome.storage.local.get(["autoRun", "fillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity"], (result) => { // Updated storage key
     autoRunCheckbox.checked = !!result.autoRun;
+
+    const fillMode = result.fillMode || 'direct'; // Default to direct
+    document.querySelectorAll('input[name="fill-mode"]').forEach(radio => {
+      radio.checked = radio.value === fillMode;
+    });
     console.log("[Popup.js] Loaded settings from storage:", result);
     
     // Initialize Coloris for Trigger Button Background
@@ -190,6 +195,15 @@ document.getElementById("save-ui-settings").addEventListener("click", () => {
 // Save auto-run setting
 autoRunCheckbox.addEventListener("change", () => {
   chrome.storage.local.set({ autoRun: autoRunCheckbox.checked });
+});
+
+// Save Fill Mode setting
+document.querySelectorAll('input[name="fill-mode"]').forEach(radio => {
+  radio.addEventListener("change", () => {
+    if (radio.checked) {
+      chrome.storage.local.set({ fillMode: radio.value });
+    }
+  });
 });
 
 // Persist provider selection immediately

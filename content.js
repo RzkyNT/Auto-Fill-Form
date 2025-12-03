@@ -1347,40 +1347,277 @@ async function doSmartFill() {
   console.log("--- Smart Fill Initialized ---");
   ensureSmartFillSession();
   
-  // Always ensure the overlay exists, then show it
-  showProgressOverlay(); 
+  // The progress overlay is now hidden by default.
+  // The user can open it via the floating menu button.
   
   let encounteredError = null;
 
-  const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
-  const hostname = window.location.hostname;
-  const customProfile = customProfiles[hostname];
+  try {
+    const { customProfiles, fillMode = 'direct' } = await chrome.storage.local.get({ customProfiles: {}, fillMode: 'direct' });
+    const hostname = window.location.hostname;
+    const customProfile = customProfiles[hostname];
+    
+    const proposedAnswers = []; // This will be populated by the handlers
 
-  if (customProfile) {
-    console.log(`Custom profile found for ${hostname}.`);
-    try {
-        await handleCustomProfile(customProfile);
-    } catch (error) {
-        encounteredError = error;
-        // Error handling is duplicated, might refactor later
-        console.error("Error during Custom Profile Smart Fill:", error);
-        updateProgressOverlay("Error", error.message);
-        finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
-        showContentToast(`An error occurred: ${error.message}`, 'error');
-    } finally {
-        console.log("--- Smart Fill Finally Block ---");
-        if (smartFillSession) {
-            if (smartFillSession.stopRequested) {
-                 updateProgressOverlay("Smart fill stopped", "Smart form filling stopped by user.");
-            } else {
-                updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
-            }
-        }
-        hideProgressOverlay(); // Hide the overlay instead of removing
-        updateAiButtonState(false); // Reset button state
-        smartFillSession = null; // Clear session state for next run
+    if (customProfile) {
+      console.log(`Custom profile found for ${hostname}.`);
+      await handleCustomProfile(customProfile, proposedAnswers);
+    } else {
+      await handleSupportedPlatforms(hostname, proposedAnswers);
     }
-  } else {
+    
+    if (smartFillSession?.stopRequested) {
+      // Stop signal is checked inside the loop, but we check again here.
+      throw new Error("Smart fill stopped by user.");
+    }
+    
+    // Step 2: Act on the proposed answers based on the fill mode
+    if (proposedAnswers.length > 0) {
+      if (fillMode === 'review') {
+        console.log("Review mode enabled. Showing review panel.");
+        // This function will eventually show a UI. For now, it will just log.
+        showReviewPanel(proposedAnswers);
+      } else { // 'direct' mode
+        console.log("Direct mode enabled. Applying answers.");
+        applyAnswers(proposedAnswers);
+      }
+      updateProgressOverlay("Smart fill complete", "All questions have been processed.");
+      showContentToast("Smart Fill process completed!", "success");
+
+    } else if (!smartFillSession?.stopRequested) {
+      console.log("No answerable questions found on the page.");
+      updateProgressOverlay("No questions found", "Could not find any items to fill.");
+      showContentToast("No answerable questions were found.", "info");
+    }
+
+  } catch (error) {
+      encounteredError = error;
+      console.error("Error during Smart Fill:", error);
+      updateProgressOverlay("Error", error.message);
+      finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
+      if (error.message !== "Smart fill stopped by user.") {
+          showContentToast(`An error occurred: ${error.message}`, 'error');
+      }
+  } finally {
+      console.log("--- Smart Fill Finally Block ---");
+      if (smartFillSession) {
+          if (smartFillSession.stopRequested) {
+               updateProgressOverlay("Smart fill stopped", "Process was cancelled by the user.");
+          }
+      }
+      // Hide the overlay after a short delay
+      setTimeout(hideProgressOverlay, 1500); 
+      updateAiButtonState(false); // Reset button state
+      smartFillSession = null; // Clear session state for next run
+  }
+}
+
+// STUB/NEW FUNCTIONS START HERE
+
+/**
+ * Applies a list of proposed answers to the DOM.
+ * @param {Array<Object>} answers - The array of proposed answers.
+ */
+function applyAnswers(answers) {
+    console.log(`Applying ${answers.length} answers directly.`);
+    for (const answer of answers) {
+        try {
+            switch (answer.type) {
+                case 'text_input':
+                case 'dropdown':
+                    answer.element.value = answer.suggestedAnswer;
+                    answer.element.dispatchEvent(new Event('input', { bubbles: true }));
+                    answer.element.dispatchEvent(new Event('change', { bubbles: true }));
+                    break;
+                case 'multiple_choice':
+                case 'checkbox_group':
+                case 'single_checkbox':
+                    if (answer.suggestedAnswer === "YES" && answer.type === 'single_checkbox'){
+                      answer.element.checked = true;
+                    } else if (answer.element) {
+                      answer.element.click();
+                    }
+                    break;
+                case 'kahoot_highlight':
+                     highlightKahootRecommendation(answer.element, answer.suggestedAnswer);
+                     break;
+            }
+             // Finalize history for the applied answer
+            startHistoryEntry(answer.question, answer.platform);
+            finalizeHistoryEntry("answered", answer.suggestedAnswer);
+        } catch (e) {
+            console.error(`Failed to apply answer for question: "${answer.question}"`, e);
+        }
+    }
+}
+
+function escapeHtml(unsafe) {
+    if (typeof unsafe !== 'string') return '';
+    return unsafe
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+}
+
+/**
+ * Shows a review panel for the user to confirm/edit answers.
+ * @param {Array<Object>} proposedAnswers - The array of proposed answers.
+ */
+function showReviewPanel(proposedAnswers) {
+    // 1. Remove any existing panel
+    const existingPanel = document.getElementById('ai-review-panel');
+    if (existingPanel) existingPanel.remove();
+
+    // 2. Create Style
+    const styleId = 'ai-review-panel-style';
+    if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+            #ai-review-panel {
+                position: fixed; inset: 0; z-index: 2147483647;
+                background: rgba(4, 7, 13, 0.85);
+                backdrop-filter: blur(8px);
+                display: flex; align-items: center; justify-content: center;
+                font-family: 'Segoe UI', sans-serif;
+            }
+            .review-panel-card {
+                background: #0B0F14;
+                color: #F2F4F6;
+                border: 1px solid rgba(255,255,255,0.1);
+                border-radius: 16px;
+                width: 90%; max-width: 800px;
+                height: 85vh;
+                display: flex; flex-direction: column;
+                box-shadow: 0 30px 80px rgba(0,0,0,0.65);
+            }
+            .review-panel-header {
+                padding: 15px 25px;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                display: flex; justify-content: space-between; align-items: center;
+            }
+            .review-panel-header h3 { font-size: 1.5em; color: #25D366; margin: 0; }
+            .review-panel-body {
+                flex-grow: 1; overflow-y: auto; padding: 25px;
+                display: grid; grid-template-columns: 1fr; gap: 20px;
+            }
+            .review-answer-card {
+                background: #11161C;
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 12px;
+                padding: 15px;
+            }
+            .review-answer-card-header {
+                display: flex; align-items: flex-start; justify-content: space-between;
+                gap: 15px;
+            }
+            .review-answer-card-question {
+                font-weight: 600; margin-bottom: 10px; color: #F2F4F6;
+                flex-grow: 1;
+            }
+            .review-answer-card .answer-input {
+                width: 100%;
+                padding: 10px;
+                background: #04070D;
+                border: 1px solid rgba(255,255,255,0.15);
+                border-radius: 8px;
+                color: #F2F4F6;
+                font-size: 1em;
+                resize: vertical;
+            }
+            .review-panel-footer {
+                padding: 15px 25px;
+                border-top: 1px solid rgba(255,255,255,0.1);
+                display: flex; justify-content: flex-end; gap: 15px;
+            }
+            .review-panel-button {
+                padding: 10px 20px; border-radius: 8px; font-weight: 600;
+                border: none; cursor: pointer; transition: opacity 0.2s;
+            }
+            .review-panel-button:hover { opacity: 0.85; }
+            #review-apply-btn { background: #25D366; color: #04070D; }
+            #review-cancel-btn { background: #11161C; color: #F2F4F6; border: 1px solid rgba(255,255,255,0.1);}
+        `;
+        document.head.appendChild(style);
+    }
+
+    // 3. Create Panel HTML
+    const panel = document.createElement('div');
+    panel.id = 'ai-review-panel';
+
+    const answerCardsHtml = proposedAnswers.map((answer, index) => {
+        return `
+            <div class="review-answer-card" data-answer-index="${index}">
+                <div class="review-answer-card-header">
+                    <div class="review-answer-card-question">
+                        <strong>Question ${index + 1}:</strong>
+                        <p style="white-space: pre-wrap; font-weight: normal; color: rgba(242, 244, 246, 0.8); margin-top: 5px;">${escapeHtml(answer.question)}</p>
+                    </div>
+                    <label style="color: #bbb; cursor: pointer;">
+                        <input type="checkbox" class="review-include-checkbox" checked>
+                        Include
+                    </label>
+                </div>
+                <textarea class="answer-input" rows="2">${escapeHtml(answer.suggestedAnswer)}</textarea>
+            </div>
+        `;
+    }).join('');
+
+    panel.innerHTML = `
+        <div class="review-panel-card">
+            <div class="review-panel-header">
+                <h3>Review AI Answers</h3>
+                <button id="review-close-btn" style="background:none; border:none; font-size: 24px; color: #aaa; cursor:pointer; line-height: 1;">&times;</button>
+            </div>
+            <div class="review-panel-body">
+                ${answerCardsHtml || '<p style="text-align:center; color: #888;">No answers were generated by the AI.</p>'}
+            </div>
+            <div class="review-panel-footer">
+                <button id="review-cancel-btn" class="review-panel-button">Cancel</button>
+                <button id="review-apply-btn" class="review-panel-button">Apply Selected</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(panel);
+
+    // 4. Add Event Listeners
+    const close = () => panel.remove();
+    panel.querySelector('#review-close-btn').addEventListener('click', close);
+    panel.querySelector('#review-cancel-btn').addEventListener('click', close);
+
+    panel.querySelector('#review-apply-btn').addEventListener('click', () => {
+        const finalAnswers = [];
+        const answerCards = panel.querySelectorAll('.review-answer-card');
+        
+        answerCards.forEach(card => {
+            const includeCheckbox = card.querySelector('.review-include-checkbox');
+            if (includeCheckbox.checked) {
+                const index = parseInt(card.dataset.answerIndex, 10);
+                const originalAnswer = proposedAnswers[index];
+                const editedValue = card.querySelector('.answer-input').value;
+                
+                originalAnswer.suggestedAnswer = editedValue;
+                finalAnswers.push(originalAnswer);
+            }
+        });
+
+        if (finalAnswers.length > 0) {
+            applyAnswers(finalAnswers);
+            showContentToast(`${finalAnswers.length} answers have been applied.`, 'success');
+        }
+        close();
+    });
+}
+
+/**
+ * Handles the logic for sites that have built-in support (not custom profiles).
+ * @param {string} hostname
+ * @param {Array<Object>} proposedAnswers - The array to populate with suggestions.
+ */
+async function handleSupportedPlatforms(hostname, proposedAnswers) {
     const isGForm = hostname === 'docs.google.com' && window.location.pathname.includes('/forms/');
     const isWayground = hostname.includes('wayground.com');
     const isQuizziz = hostname.includes('quizziz.com');
@@ -1388,41 +1625,14 @@ async function doSmartFill() {
     const isCbt = hostname === '115.124.76.241';
 
     if (!isGForm && !isWayground && !isQuizziz && !isKahoot && !isCbt) {
-      showContentToast("Smart Fill currently supports Google Forms, wayground.com, quizziz.com, kahoot.it, and the CBT instance.", 'error');
-      console.warn("Smart Fill aborted: Unsupported host.");
-      hideProgressOverlay(); // Hide on abort
-      updateAiButtonState(false); // Reset button state
-      return;
+      throw new Error("The current website is not supported for Smart Fill.");
     }
 
-    try {
-      if (isGForm) {
-        await handleGoogleForms();
-      } else {
-        await handleQuizPlatforms(hostname);
-      }
-    } catch (error) {
-      encounteredError = error;
-      console.error("Error during Smart Fill:", error);
-      updateProgressOverlay("Error", error.message);
-      finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
-      showContentToast(`An error occurred while using the AI provider: ${error.message}`, 'error');
-    } finally {
-      console.log("--- Smart Fill Completed ---");
-      if (smartFillSession) {
-        if (!encounteredError && !(smartFillSession && smartFillSession.stopRequested)) {
-          updateProgressOverlay("Smart fill complete", "Smart form filling completed!");
-          updateProgressBar(1);
-          // Small delay before hiding after completion
-          setTimeout(hideProgressOverlay, 600);
-        } else {
-          // If stopped or error, hide after a longer delay
-          setTimeout(hideProgressOverlay, 1500);
-        }
-      }
-      updateAiButtonState(false); // Reset button state when done
+    if (isGForm) {
+      await handleGoogleForms(proposedAnswers);
+    } else {
+      await handleQuizPlatforms(hostname, proposedAnswers);
     }
-  }
 }
 
 async function processCurrentQuizState(profile) {
@@ -1524,7 +1734,7 @@ async function processCurrentQuizState(profile) {
   }
 }
 
-async function handleCustomProfile(profile) {
+async function handleCustomProfile(profile, proposedAnswers) {
   clearKahootRecommendation();
 
   const questionListContainer = document.querySelector(profile.questionListContainer);
@@ -1533,12 +1743,7 @@ async function handleCustomProfile(profile) {
   }
 
   ensureSmartFillSession();
-  const showOverlay = await getOverlayPreference();
-      if (showOverlay) {
-        createProgressOverlay();
-      } else {
-        hideProgressOverlay();
-      }
+  
   const allQuestions = questionListContainer.querySelectorAll(profile.questionBlock);
   smartFillSession.totalSteps = allQuestions.length;
   console.log(`Found ${allQuestions.length} questions using custom profile.`);
@@ -1549,18 +1754,16 @@ async function handleCustomProfile(profile) {
       break;
     }
     const questionElement = allQuestions[i];
-    await processSingleCustomProfileQuestion(questionElement, profile, i + 1, allQuestions.length);
+    await processSingleCustomProfileQuestion(questionElement, profile, i + 1, allQuestions.length, proposedAnswers);
     // Add a small delay to avoid overwhelming the page or the AI
     await new Promise(resolve => setTimeout(resolve, 500));
   }
 
-  hideProgressOverlay();
-  updateAiButtonState(false);
-  console.log("Custom profile smart fill process completed.");
+  console.log("Custom profile smart fill data gathering completed.");
 }
 
 // New function to process a single question based on the custom profile
-async function processSingleCustomProfileQuestion(questionBlockElement, profile, index, total) {
+async function processSingleCustomProfileQuestion(questionBlockElement, profile, index, total, proposedAnswers) {
   try {
     const questionTextElement = questionBlockElement.querySelector(profile.questionText);
     const questionText = (questionTextElement?.textContent || '').trim();
@@ -1603,7 +1806,7 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
       return;
     }
 
-    startHistoryEntry(fullQuestionText);
+    startHistoryEntry(fullQuestionText, 'custom');
     console.log(`--- Processing Question ${index}/${total}: "${fullQuestionText}"`);
     updateProgressOverlay(`Reading question ${index}/${total}`, fullQuestionText);
 
@@ -1625,9 +1828,13 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
         const prompt = `${basePrompt}\n\nRespond with only the answer text.`;
         updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
-        detectedAnswerField.element.value = aiAnswer;
-        detectedAnswerField.element.dispatchEvent(new Event('input', { bubbles: true }));
-        finalizeHistoryEntry("answered (text input)", aiAnswer);
+        proposedAnswers.push({
+            question: fullQuestionText,
+            suggestedAnswer: aiAnswer,
+            element: detectedAnswerField.element,
+            type: 'text_input',
+            platform: 'custom'
+        });
     } else if (detectedAnswerField.type === 'multiple_choice' || detectedAnswerField.type === 'checkbox_group') {
         const options = [];
         for (const el of detectedAnswerField.elements) {
@@ -1665,8 +1872,13 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
 
         const target = matchOption(options, aiAnswer);
         if (target) {
-            target.element.click();
-            finalizeHistoryEntry("answered (choice)", target.label);
+            proposedAnswers.push({
+                question: fullQuestionText,
+                suggestedAnswer: target.label,
+                element: target.element,
+                type: detectedAnswerField.type,
+                platform: 'custom'
+            });
         } else {
             finalizeHistoryEntry("no match", aiAnswer);
         }
@@ -1674,14 +1886,13 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
         const prompt = `Based on the question "${fullQuestionText}", should the checkbox be checked? Respond with only "YES" or "NO".`;
         updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
-        if (aiAnswer.toLowerCase() === 'yes') {
-            detectedAnswerField.element.checked = true;
-            finalizeHistoryEntry("checked", "YES");
-        } else {
-            detectedAnswerField.element.checked = false;
-            finalizeHistoryEntry("unchecked", "NO");
-        }
-        detectedAnswerField.element.dispatchEvent(new Event('change', { bubbles: true }));
+        proposedAnswers.push({
+            question: fullQuestionText,
+            suggestedAnswer: aiAnswer.toLowerCase() === 'yes' ? 'YES' : 'NO',
+            element: detectedAnswerField.element,
+            type: 'single_checkbox',
+            platform: 'custom'
+        });
     } else if (detectedAnswerField.type === 'dropdown') {
         const selectElement = detectedAnswerField.element;
         const options = Array.from(selectElement.options).map(opt => ({ element: opt, label: opt.textContent }));
@@ -1704,9 +1915,13 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
 
         const target = options.find(opt => normalizeQuizText(opt.label) === normalizeQuizText(aiAnswer));
         if (target) {
-            selectElement.value = target.element.value;
-            selectElement.dispatchEvent(new Event('change', { bubbles: true }));
-            finalizeHistoryEntry("answered (dropdown)", target.label);
+            proposedAnswers.push({
+                question: fullQuestionText,
+                suggestedAnswer: target.element.value, // For dropdowns, the value is what we set
+                element: selectElement,
+                type: 'dropdown',
+                platform: 'custom'
+            });
         } else {
             finalizeHistoryEntry("no match (dropdown)", aiAnswer);
         }
@@ -1715,6 +1930,8 @@ async function processSingleCustomProfileQuestion(questionBlockElement, profile,
         finalizeHistoryEntry("unknown type", "");
     }
     
+    // We still add the hash here to prevent re-processing during the same session,
+    // even if the user cancels the review panel.
     await addAnsweredQuestionHash(questionHash);
     smartFillSession.completedSteps = index;
     updateProgressBar(index / Math.max(1, total));
@@ -1734,7 +1951,7 @@ function getOverlayPreference() {
   });
 }
 
-async function handleGoogleForms() {
+async function handleGoogleForms(proposedAnswers) {
   const questions = document.querySelectorAll('div[role="listitem"]');
   console.log(`Found ${questions.length} question items.`);
   smartFillSession.totalSteps = questions.length;
@@ -1742,7 +1959,7 @@ async function handleGoogleForms() {
   for (const [index, q] of questions.entries()) {
     if (smartFillSession?.stopRequested) break;
     try {
-      await processGoogleFormQuestion(q, index, questions.length);
+      await processGoogleFormQuestion(q, index, questions.length, proposedAnswers);
     } catch (error) {
       throw error;
     }
@@ -1750,7 +1967,7 @@ async function handleGoogleForms() {
   }
 }
 
-async function processGoogleFormQuestion(q, index, total) {
+async function processGoogleFormQuestion(q, index, total, proposedAnswers) {
   console.log(`\n--- Processing Question ${index + 1} ---`);
   updateProgressOverlay(
     `Reading question ${index + 1}/${total}`,
@@ -1772,12 +1989,16 @@ async function processGoogleFormQuestion(q, index, total) {
     return;
   }
 
-  startHistoryEntry(questionText);
+  // We don't start the history entry here anymore, it will be started in `applyAnswers`
+  // startHistoryEntry(questionText); 
   console.log(`Question Text: "${questionText}"`);
 
   try {
-    await fillGoogleFormQuestion(q, questionText, questionHash);
+    await fillGoogleFormQuestion(q, questionText, questionHash, proposedAnswers);
+    await addAnsweredQuestionHash(questionHash); // Still mark as processed for this session
   } catch (error) {
+    // Finalize history entry with an error status
+    startHistoryEntry(questionText, 'gform');
     finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
     throw error;
   }
@@ -1789,17 +2010,17 @@ async function processGoogleFormQuestion(q, index, total) {
   }
 }
 
-async function fillGoogleFormQuestion(q, questionText, questionHash) {
+async function fillGoogleFormQuestion(q, questionText, questionHash, proposedAnswers) {
   try {
     const choices = q.querySelectorAll('div[role="radio"], div[role="checkbox"]');
     if (choices.length > 0) {
       const choiceLabels = Array.from(choices).map(c => (c.getAttribute('aria-label') || c.textContent || "").trim()).filter(Boolean);
       
-      if (smartFillSession?.currentEntry) {
-        smartFillSession.currentEntry.choices = choiceLabels;
-      }
+      // Temporarily store choices in session for history, though this is imperfect
+      // if (smartFillSession?.currentEntry) {
+      //   smartFillSession.currentEntry.choices = choiceLabels;
+      // }
 
-      smartFillSession.currentEntry.events = [];
       if (choiceLabels.length === 0) {
         console.warn("Found choices but could not extract any labels. Skipping.");
         return;
@@ -1814,16 +2035,25 @@ async function fillGoogleFormQuestion(q, questionText, questionHash) {
       const aiAnswer = await getAiResponse(prompt);
       updateProgressOverlay("Matching AI response...", aiAnswer);
       console.log(`AI Answer Received: "${aiAnswer}"`);
-      const targetChoice = Array.from(choices).find(c => {
+      
+      const targetChoiceElement = Array.from(choices).find(c => {
         const label = (c.getAttribute('aria-label') || c.textContent || "").trim();
-        return label && (label.toLowerCase().includes(aiAnswer.toLowerCase()) || aiAnswer.toLowerCase().includes(label.toLowerCase()));
+        // A more robust matching logic
+        return label && (normalizeQuizText(label).includes(normalizeQuizText(aiAnswer)) || normalizeQuizText(aiAnswer).includes(normalizeQuizText(label)));
       });
-      if (targetChoice) {
-        const matchedLabel = (targetChoice.getAttribute('aria-label') || targetChoice.textContent || "").trim();
-        targetChoice.click();
-        finalizeHistoryEntry("answered (choice)", matchedLabel || aiAnswer);
-        await addAnsweredQuestionHash(questionHash);
+
+      if (targetChoiceElement) {
+        const matchedLabel = (targetChoiceElement.getAttribute('aria-label') || targetChoiceElement.textContent || "").trim();
+        proposedAnswers.push({
+            question: questionText,
+            suggestedAnswer: matchedLabel,
+            element: targetChoiceElement,
+            type: choices[0].getAttribute('role') === 'radio' ? 'multiple_choice' : 'checkbox_group',
+            platform: 'gform'
+        });
       } else {
+        // Log "no match" in history, but don't propose an action
+        startHistoryEntry(questionText, 'gform');
         finalizeHistoryEntry("no match", aiAnswer);
       }
       return;
@@ -1836,19 +2066,22 @@ async function fillGoogleFormQuestion(q, questionText, questionHash) {
       console.log("Sending Prompt to Background:", prompt);
       updateProgressOverlay("Consulting AI provider...", questionText);
       const aiResponse = await getAiResponse(prompt);
-      updateProgressOverlay("Typing AI answer...", aiResponse);
+      updateProgressOverlay("Processing AI answer...", aiResponse);
       console.log(`AI Answer Received: "${aiResponse}"`);
-      textInput.value = aiResponse;
-      textInput.dispatchEvent(new Event('input', { bubbles: true }));
-      finalizeHistoryEntry("answered (text input)", aiResponse);
-      await addAnsweredQuestionHash(questionHash);
+      proposedAnswers.push({
+          question: questionText,
+          suggestedAnswer: aiResponse,
+          element: textInput,
+          type: 'text_input',
+          platform: 'gform'
+      });
     }
   } catch (error) {
-    throw error;
+    throw error; // Re-throw to be caught by processGoogleFormQuestion
   }
 }
 
-async function handleQuizPlatforms(host) {
+async function handleQuizPlatforms(host, proposedAnswers) {
   clearKahootRecommendation();
   const questionText = extractQuizQuestion(host);
   if (!questionText) {
@@ -1892,13 +2125,16 @@ async function handleQuizPlatforms(host) {
   updateProgressOverlay("Matching AI response...", aiAnswer);
   const target = matchOption(options, aiAnswer);
   if (target) {
-    if (host.includes("kahoot.it") || host.includes("play.kahoot.it")) {
-      highlightKahootRecommendation(target.element, target.label);
-      finalizeHistoryEntry("suggested (kahoot)", target.label);
-    } else {
-      target.element.click();
-      finalizeHistoryEntry("answered (quiz)", target.label);
-    }
+    const isKahoot = host.includes("kahoot.it") || host.includes("play.kahoot.it");
+    
+    proposedAnswers.push({
+        question: questionText,
+        suggestedAnswer: target.label,
+        element: target.element,
+        type: isKahoot ? 'kahoot_highlight' : 'multiple_choice',
+        platform: platformName
+    });
+    
     await addAnsweredQuestionHash(questionHash);
   } else {
     finalizeHistoryEntry("no match", aiAnswer);
