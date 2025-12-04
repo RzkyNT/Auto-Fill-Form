@@ -568,6 +568,21 @@
     .button-primary {
       background: var(--color-accent);
       color: #04070D;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 1em;
+      border: 1px solid transparent;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px !important;
+      font-family: Arial;
+    }
+
+    .button-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      border-color: var(--color-accent);
     }
 
     .button-danger {
@@ -979,8 +994,11 @@
           <p class="history-subhead">Export or import all your settings, API keys, and personalized data.</p>
           <div style="display: flex; gap: 10px; margin-top: 10px;">
             <button id="export-all-settings" class="button-primary" style="flex: 1;">Export All Settings</button>
+            <label for="import-settings-file-input" class="button-primary"
+              style="flex: 1; text-align: center; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 0;">
+              Import Settings
+            </label>
             <input type="file" id="import-settings-file-input" accept=".json" style="display: none;">
-            <button id="import-all-settings" class="button-primary" style="flex: 1;">Import Settings</button>
           </div>
           <h4 style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;">Custom Profiles
           </h4>
@@ -1041,8 +1059,11 @@
 
       <div style="margin-top: 20px; display: flex; gap: 10px;">
         <button id="export-profiles" class="button-primary" style="flex: 1;">Export Profiles</button>
+        <label for="import-file-input" class="button-primary"
+          style="flex: 1; text-align: center; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 0;">
+          Import Profiles
+        </label>
         <input type="file" id="import-file-input" accept=".json" style="display: none;">
-        <button id="import-profiles" class="button-primary" style="flex: 1;">Import Profiles</button>
       </div>
     </div>
   </div> <!-- End of profiles-view -->

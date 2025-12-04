@@ -847,10 +847,7 @@ document.getElementById('export-profiles').addEventListener('click', async () =>
 });
 
 // --- Import Profiles ---
-document.getElementById('import-profiles').addEventListener('click', () => {
-  document.getElementById('import-file-input').click();
-});
-
+// File input change handler (works with label wrapper for Android compatibility)
 document.getElementById('import-file-input').addEventListener('change', async (event) => {
   const file = event.target.files[0];
   if (!file) return;
@@ -933,7 +930,6 @@ function setupAccordionBehavior() {
 
 // Export/Import All Settings Feature
 const exportAllSettingsButton = document.getElementById('export-all-settings');
-const importAllSettingsButton = document.getElementById('import-all-settings');
 const importSettingsFileInput = document.getElementById('import-settings-file-input');
 
 if (exportAllSettingsButton) {
@@ -1007,12 +1003,7 @@ if (exportAllSettingsButton) {
   });
 }
 
-if (importAllSettingsButton) {
-  importAllSettingsButton.addEventListener('click', () => {
-    importSettingsFileInput.click();
-  });
-}
-
+// File input change handler (works with label wrapper for Android compatibility)
 if (importSettingsFileInput) {
   importSettingsFileInput.addEventListener('change', async (event) => {
     const file = event.target.files[0];
