@@ -168,6 +168,7 @@ function initContentScript() {
       timerProgressBar: true,
       icon,
       text: title,
+      opacity: 'var(--smart-fill-trigger-container-opacity, 1)',
       background: isLightTheme ? '#ffffff' : '#0B0F14',
       color: isLightTheme ? '#2b2b2b' : '#F2F4F6'
     });
@@ -1130,22 +1131,32 @@ Response (number only or "NONE"):`;
     toast.textContent = message;
 
     Object.assign(toast.style, {
-      position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
-      padding: '12px 20px', borderRadius: '8px', color: 'white', zIndex: '2147483647',
-      fontFamily: '"Segoe UI", sans-serif', fontSize: '14px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-      transition: 'opacity 0.3s ease, transform 0.3s ease', opacity: '0', transform: 'translate(-50%, 10px)'
+      position: 'fixed', bottom: '20px', left: '50%',
+      transform: 'translate(-50%, 10px)',
+      padding: '12px 20px', borderRadius: '8px', color: 'white',
+      zIndex: '2147483647',
+      opacity: 'var(--smart-fill-trigger-container-opacity, 0)',
+      fontFamily: '"Segoe UI", sans-serif', fontSize: '14px',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+      transition: 'opacity 0.3s ease, transform 0.3s ease'
     });
+
     toast.style.backgroundColor = type === 'error' ? '#d32f2f' : '#25D366';
+    toast.style.setProperty('--smart-fill-trigger-container-opacity', '0');
 
     document.body.appendChild(toast);
 
+    // Fade in
     setTimeout(() => {
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateX(-50%)';
+      const triggerContainer = document.getElementById('smart-fill-trigger-container');
+      const targetOpacity = triggerContainer ? (triggerContainer.style.opacity || '1') : '1';
+      toast.style.setProperty('--smart-fill-trigger-container-opacity', targetOpacity);
+      toast.style.transform = 'translate(-50%, 0)';
     }, 10);
 
+    // Fade out
     setTimeout(() => {
-      toast.style.opacity = '0';
+      toast.style.setProperty('--smart-fill-trigger-container-opacity', '0');
       toast.style.transform = 'translate(-50%, 10px)';
       setTimeout(() => toast.remove(), 300);
     }, 3000);
@@ -1454,7 +1465,7 @@ Response (number only or "NONE"):`;
     const normalizeNewlines = (value = '') => value.replace(/\r\n?/g, '\n');
 
     const autoResizeTextarea = (textarea) => {
-      if (!textarea) return () => {};
+      if (!textarea) return () => { };
       const resize = () => {
         textarea.style.height = 'auto';
         textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
