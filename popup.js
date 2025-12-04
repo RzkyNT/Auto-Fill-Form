@@ -193,6 +193,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Apply theme to Coloris.js picker as well
     Coloris.set('themeMode', darkModeToggle.checked ? 'dark' : 'light');
+
+    setupAccordionBehavior();
   });
 });
 
@@ -913,4 +915,19 @@ document.getElementById('import-file-input').addEventListener('change', async (e
   };
   reader.readAsText(file);
 });
+
+function setupAccordionBehavior() {
+  const accordions = document.querySelectorAll('.settings-accordion');
+  accordions.forEach(acc => {
+    acc.addEventListener('toggle', (event) => {
+      if (acc.open) {
+        accordions.forEach(otherAcc => {
+          if (otherAcc !== acc && otherAcc.open) {
+            otherAcc.open = false;
+          }
+        });
+      }
+    });
+  });
+}
 

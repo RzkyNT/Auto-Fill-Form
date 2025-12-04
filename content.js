@@ -186,6 +186,7 @@ function initContentScript() {
     injectSweetAlert2();
 
     // Create the UI first
+    setupKeyboardShortcuts();
     await createTriggerOverlay();
     enableUserSelect();
 
@@ -1215,6 +1216,76 @@ Response (number only or "NONE"):`;
         overlay.classList.toggle('visible');
       }
     }
+  }
+
+  function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+      // Ctrl+Shift+Z: Run AI
+      if (e.ctrlKey && e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        const runAiButton = document.getElementById('run-ai-button');
+        // Check if already running
+        if (runAiButton && runAiButton.classList.contains('processing')) {
+          showContentToast("Smart Fill is already running. Use Ctrl+Shift+X to stop.", "info");
+        } else {
+          // Start Smart Fill
+          toggleProgressOverlay(false);
+          doSmartFill();
+        }
+        return;
+      }
+
+      // Ctrl+Shift+X: Stop AI
+      if (e.ctrlKey && e.shiftKey && (e.key === 'x' || e.key === 'X')) {
+        e.preventDefault();
+        if (smartFillSession) {
+          smartFillSession.stopRequested = true;
+          updateAiButtonState(false);
+          toggleProgressOverlay(false);
+          showContentToast("Smart Fill stopped.", "info");
+          if (smartFillSession.stopSignalResolver) {
+            smartFillSession.stopSignalResolver();
+            smartFillSession.stopSignalResolver = null;
+          }
+        }
+        return;
+      }
+
+      // Alt+Shift Shortcuts for other actions
+      if (e.altKey && e.shiftKey) {
+        switch (e.key.toLowerCase()) {
+          case 'm': // Toggle Menu
+            e.preventDefault();
+            const container = document.getElementById('smart-fill-trigger-container');
+            if (container) container.classList.toggle('active');
+            break;
+          case 'c': // Chat
+            e.preventDefault();
+            const chatBtn = document.getElementById('chat-overlay-button');
+            if (chatBtn) chatBtn.click();
+            break;
+          case 'f': // Fullscreen
+            e.preventDefault();
+            const fsBtn = document.getElementById('fullscreen-button');
+            if (fsBtn) fsBtn.click();
+            break;
+          case 'r': // Reset
+            e.preventDefault();
+            const resetBtn = document.getElementById('reset-session-button');
+            if (resetBtn) resetBtn.click();
+            break;
+          case 'p': // Add Profile
+            e.preventDefault();
+            const profileBtn = document.getElementById('add-profile-button');
+            if (profileBtn) profileBtn.click();
+            break;
+          case 'o': // Toggle Progress Overlay
+            e.preventDefault();
+            toggleProgressOverlay();
+            break;
+        }
+      }
+    });
   }
 
   /**
