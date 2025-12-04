@@ -1003,6 +1003,100 @@ if (exportAllSettingsButton) {
   });
 }
 
+// Toggle Paste Import UI
+const togglePasteImportButton = document.getElementById('toggle-paste-import');
+const pasteImportContainer = document.getElementById('paste-import-container');
+const cancelPasteImportButton = document.getElementById('cancel-paste-import');
+const importFromPasteButton = document.getElementById('import-from-paste');
+const pasteImportTextarea = document.getElementById('paste-import-textarea');
+
+if (togglePasteImportButton) {
+  togglePasteImportButton.addEventListener('click', () => {
+    pasteImportContainer.style.display = 'block';
+    pasteImportTextarea.focus();
+  });
+}
+
+if (cancelPasteImportButton) {
+  cancelPasteImportButton.addEventListener('click', () => {
+    pasteImportContainer.style.display = 'none';
+    pasteImportTextarea.value = '';
+  });
+}
+
+if (importFromPasteButton) {
+  importFromPasteButton.addEventListener('click', async () => {
+    const jsonText = pasteImportTextarea.value.trim();
+
+    if (!jsonText) {
+      Swal.fire({
+        title: 'Error!',
+        text: 'Please paste your backup JSON first.',
+        icon: 'error',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+      return;
+    }
+
+    try {
+      const backup = JSON.parse(jsonText);
+
+      // Validate backup structure
+      if (!backup.settings) {
+        throw new Error('Invalid backup file format');
+      }
+
+      // Confirm with user before importing
+      const result = await Swal.fire({
+        title: 'Import Settings?',
+        html: `
+          <p>This will replace your current settings with the backup from:</p>
+          <p><strong>${new Date(backup.exportDate).toLocaleString()}</strong></p>
+          <p>Extension Version: <strong>${backup.version}</strong></p>
+          <br>
+          <p style="color: #ff6b7a;">⚠️ Your current settings will be overwritten!</p>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, Import',
+        cancelButtonText: 'Cancel',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+
+      if (!result.isConfirmed) return;
+
+      // Import settings
+      await chrome.storage.local.set(backup.settings);
+
+      // Clear textarea and hide container
+      pasteImportTextarea.value = '';
+      pasteImportContainer.style.display = 'none';
+
+      Swal.fire({
+        title: 'Import Successful!',
+        text: 'Your settings have been restored. The popup will now reload.',
+        icon: 'success',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      }).then(() => {
+        location.reload();
+      });
+
+    } catch (error) {
+      console.error('Error importing from paste:', error);
+      Swal.fire({
+        title: 'Import Failed!',
+        text: `Error: ${error.message}. Please make sure you pasted valid JSON.`,
+        icon: 'error',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+    }
+  });
+}
+
 // File input change handler (works with label wrapper for Android compatibility)
 if (importSettingsFileInput) {
   importSettingsFileInput.addEventListener('change', async (event) => {

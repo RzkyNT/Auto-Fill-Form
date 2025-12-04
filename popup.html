@@ -992,13 +992,40 @@
           <h4 style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;">Backup & Restore
           </h4>
           <p class="history-subhead">Export or import all your settings, API keys, and personalized data.</p>
+
+          <!-- Export Button -->
+          <button id="export-all-settings" class="button-primary">Export All Settings</button>
+
+          <!-- Import Options -->
           <div style="display: flex; gap: 10px; margin-top: 10px;">
-            <button id="export-all-settings" class="button-primary" style="flex: 1;">Export All Settings</button>
             <label for="import-settings-file-input" class="button-primary"
               style="flex: 1; text-align: center; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 0;">
-              Import Settings
+              Import from File
             </label>
             <input type="file" id="import-settings-file-input" accept=".json" style="display: none;">
+
+            <button id="toggle-paste-import" class="button-primary" style="flex: 1;">
+              Import via Paste
+            </button>
+          </div>
+
+          <!-- Paste Import Area (Hidden by default) -->
+          <div id="paste-import-container" style="display: none; margin-top: 15px;">
+            <label for="paste-import-textarea" style="display: block; margin-bottom: 8px; font-weight: 600;">
+              Paste your backup JSON here:
+            </label>
+            <textarea id="paste-import-textarea" class="api-key-input" rows="8"
+              placeholder='Paste the entire content of your backup JSON file here...'
+              style="font-family: Courier New, monospace; font-size: 0.75em; resize: vertical;"></textarea>
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+              <button id="import-from-paste" class="button-primary" style="flex: 1;">
+                Import Settings
+              </button>
+              <button id="cancel-paste-import" class="button-primary"
+                style="flex: 1; background: transparent; color: var(--color-text); border: 1px solid var(--color-border);">
+                Cancel
+              </button>
+            </div>
           </div>
           <h4 style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;">Custom Profiles
           </h4>
