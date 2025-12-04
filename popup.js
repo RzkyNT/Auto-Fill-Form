@@ -34,6 +34,8 @@ const darkModeToggle = document.getElementById("dark-mode-toggle");
 const triggerButtonOpacityInput = document.getElementById("overlay-opacity");
 const triggerButtonOpacityValueSpan = document.getElementById("trigger-button-opacity-value");
 const showFloatingMenuCheckbox = document.getElementById("show-floating-menu");
+const floatingMenuSizeInput = document.getElementById("floating-menu-size");
+const floatingMenuSizeValueSpan = document.getElementById("floating-menu-size-value");
 const htmlRoot = document.documentElement;
 const manageProfilesButton = document.getElementById("manage-profiles");
 const viewHistoryButton = document.getElementById("view-history");
@@ -105,7 +107,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Load other non-activation-related settings from storage
-  chrome.storage.local.get(["autoRun", "fillMode", "personalizedData", "personalFillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity", "showFloatingMenu"], (result) => { // Updated storage key
+  chrome.storage.local.get(["autoRun", "fillMode", "personalizedData", "personalFillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity", "showFloatingMenu", "floatingMenuSize"], (result) => {
     autoRunCheckbox.checked = !!result.autoRun;
     showFloatingMenuCheckbox.checked = result.showFloatingMenu !== false; // Default to true
 
@@ -190,6 +192,13 @@ document.addEventListener("DOMContentLoaded", () => {
     triggerButtonOpacityInput.value = triggerButtonOpacity;
     triggerButtonOpacityValueSpan.textContent = `${triggerButtonOpacity}%`;
     sendTriggerButtonOpacityUpdateToContentScript(parseFloat(triggerButtonOpacity) / 100); // Updated function call
+    // Load Floating Menu Size
+    const floatingMenuSize = result.floatingMenuSize || 64;
+    if (floatingMenuSizeInput) {
+      floatingMenuSizeInput.value = floatingMenuSize;
+      floatingMenuSizeValueSpan.textContent = `${floatingMenuSize}px`;
+    }
+    sendFloatingMenuSizeToContentScript(floatingMenuSize);
 
     // Apply theme to Coloris.js picker as well
     Coloris.set('themeMode', darkModeToggle.checked ? 'dark' : 'light');
@@ -202,12 +211,14 @@ document.addEventListener("DOMContentLoaded", () => {
 document.getElementById("save-ui-settings").addEventListener("click", () => {
   const triggerButtonBgColor = document.getElementById("trigger-button-bg-color").value;
   const triggerIconSpanColor = document.getElementById("trigger-icon-span-color").value;
-  const triggerButtonOpacity = parseInt(triggerButtonOpacityInput.value); // Corrected source and variable name
+  const triggerButtonOpacity = parseInt(triggerButtonOpacityInput.value);
+  const floatingMenuSizeValue = parseInt(floatingMenuSizeInput.value);
 
   chrome.storage.local.set({
     triggerButtonBgColor: triggerButtonBgColor,
     triggerIconSpanColor: triggerIconSpanColor,
-    triggerButtonOpacity: triggerButtonOpacity // Corrected storage key
+    triggerButtonOpacity: triggerButtonOpacity,
+    floatingMenuSize: floatingMenuSizeValue
   }, () => {
     const saveButton = document.getElementById("save-ui-settings");
     saveButton.textContent = "Saved!";
@@ -1345,5 +1356,88 @@ if (importProfilesFromPasteButton) {
         color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
       });
     }
+  });
+}
+
+// ============================================
+// AUTO UPDATE CHECK
+// ============================================
+async function checkForUpdates() {
+  try {
+    const response = await fetch('https://raw.githubusercontent.com/RzkyNT/Auto-Fill-Form/main/version.json');
+    const data = await response.json();
+
+    const currentVersion = chrome.runtime.getManifest().version;
+    const latestVersion = data.version;
+
+    if (latestVersion !== currentVersion) {
+      const updateBanner = document.getElementById('update-banner');
+      const newVersionSpan = document.getElementById('new-version');
+
+      if (updateBanner && newVersionSpan) {
+        newVersionSpan.textContent = latestVersion;
+        updateBanner.dataset.url = data.release_url;
+        updateBanner.style.display = 'block';
+      }
+    }
+  } catch (error) {
+    console.log('Update check failed:', error);
+  }
+}
+
+// Check for updates when popup opens
+checkForUpdates();
+
+// Reset Floating Menu Position
+const resetFloatingPositionButton = document.getElementById('reset-floating-position');
+if (resetFloatingPositionButton) {
+  resetFloatingPositionButton.addEventListener('click', async () => {
+    await chrome.storage.local.remove('floatingMenuPosition');
+
+    // Send message to content script to reset position
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && tab.id && !tab.url.startsWith('chrome://')) {
+        await chrome.tabs.sendMessage(tab.id, { action: 'resetFloatingMenuPosition' });
+      }
+    } catch (error) {
+      console.log('[Popup.js] Could not send reset message');
+    }
+
+    const originalText = resetFloatingPositionButton.textContent;
+    resetFloatingPositionButton.textContent = 'Position Reset!';
+    resetFloatingPositionButton.style.background = '#25D366';
+
+    setTimeout(() => {
+      resetFloatingPositionButton.textContent = originalText;
+      resetFloatingPositionButton.style.background = '';
+    }, 2000);
+  });
+}
+
+// ============================================
+// FLOATING MENU SIZE CONTROL
+// ============================================
+async function sendFloatingMenuSizeToContentScript(size) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+      return;
+    }
+    await chrome.tabs.sendMessage(tab.id, {
+      action: 'updateFloatingMenuSize',
+      size: size
+    });
+  } catch (error) {
+    console.log('[Popup.js] Content script not loaded on this page');
+  }
+}
+
+if (floatingMenuSizeInput) {
+  floatingMenuSizeInput.addEventListener('input', () => {
+    const sizeValue = parseInt(floatingMenuSizeInput.value);
+    floatingMenuSizeValueSpan.textContent = `${sizeValue}px`;
+    chrome.storage.local.set({ floatingMenuSize: sizeValue });
+    sendFloatingMenuSizeToContentScript(sizeValue);
   });
 }

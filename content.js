@@ -84,6 +84,27 @@ function initContentScript() {
         if (container) container.remove();
       }
       sendResponse({ status: 'floating menu state updated' });
+    } else if (request.action === 'updateFloatingMenuSize') {
+      const container = document.getElementById('smart-fill-trigger-container');
+      if (container) {
+        const size = `${request.size}px`;
+        container.style.width = size;
+        container.style.height = size;
+      }
+      sendResponse({ status: 'size updated' });
+    } else if (request.action === 'resetFloatingMenuPosition') {
+      chrome.storage.local.remove('floatingMenuPosition', () => {
+        const container = document.getElementById('smart-fill-trigger-container');
+        if (container) {
+          // Reset inline styles to allow CSS to take over
+          container.style.left = '';
+          container.style.top = '';
+          container.style.bottom = '20px';
+          container.style.right = '20px';
+        }
+        sendResponse({ status: 'position reset' });
+      });
+      return true; // Keep message channel open for async response
     }
     // --- Original Message Listener ---
     if (request.action === 'showContentToast' && request.toast) {
@@ -1455,183 +1476,231 @@ Response (number only or "NONE"):`;
    */
   async function createTriggerOverlay() {
     console.log("[Content.js] createTriggerOverlay function started.");
-    const { customProfiles, triggerButtonBgColor, triggerIconSpanColor, triggerButtonOpacity, showFloatingMenu } = await chrome.storage.local.get({
-      customProfiles: {},
-      triggerButtonBgColor: '#EDE1FF', // Default
-      triggerIconSpanColor: '#5E3BAE', // Default
-      triggerButtonOpacity: 100, // Default (0-100 scale)
-      showFloatingMenu: true // Default true
+    const {
+      triggerButtonBgColor,
+      triggerIconSpanColor,
+      triggerButtonOpacity,
+      showFloatingMenu,
+      floatingMenuSize,
+      floatingMenuPosition
+    } = await chrome.storage.local.get({
+      triggerButtonBgColor: '#EDE1FF',
+      triggerIconSpanColor: '#5E3BAE',
+      triggerButtonOpacity: 100,
+      showFloatingMenu: true,
+      floatingMenuSize: 64,
+      floatingMenuPosition: null
     });
-
+  
     if (showFloatingMenu === false) {
       console.log("[Content.js] Not showing trigger overlay: Disabled in settings.");
+      const existingContainer = document.getElementById('smart-fill-trigger-container');
+      if (existingContainer) existingContainer.remove();
       return;
     }
-
-    // Always render the floating menu unless the user explicitly hides it in settings.
+  
     if (document.getElementById('smart-fill-trigger-container')) {
       console.log("[Content.js] Trigger overlay already exists.");
       return;
     }
-
-    // Use cached values if available, otherwise fallback to stored or default values
+  
     const currentButtonBgColor = cachedTriggerButtonBgColor || triggerButtonBgColor;
     const currentIconSpanColor = cachedTriggerIconSpanColor || triggerIconSpanColor;
     const currentOpacity = cachedTriggerButtonOpacity !== null ? cachedTriggerButtonOpacity : (parseFloat(triggerButtonOpacity) / 100);
-
-    // New icon for toggling the progress overlay
+  
     const progressOverlayIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M200-200v-560h560v560H200Zm0 80h560q33 0 56.5-23.5T840-200v-560q0-33-23.5-56.5T760-840H200q-33 0-56.5 23.5T80-760v560q0 33 23.5 56.5T200-120Zm80-80h400v-400H280v400Zm-80 0v-560 560Z"/></svg>`;
-
+  
     const triggerContainer = document.createElement("div");
-
     triggerContainer.id = "smart-fill-trigger-container";
-
-
-
-    // Apply initial inline styles using current (cached/stored) values
-
     triggerContainer.style.opacity = currentOpacity;
-
-
-
-    triggerContainer.innerHTML = `
-
-        <button id="smart-fill-trigger-button" style="background: ${currentButtonBgColor};">
-
-            <div class="smart-fill-icon">
-
-                <span style="background: ${currentIconSpanColor};"></span>
-
-                <span style="background: ${currentIconSpanColor};"></span>
-
-                <span style="background: ${currentIconSpanColor};"></span>
-
-            </div>
-
-        </button>
-
-        <a href="#" id="run-ai-button" class="social-icon" title="Run AI">${runAiIcon}</a>
-
-        <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">${fullscreenEnterIcon}</a>
-
-        <a href="#" id="reset-session-button" class="social-icon" title="Reset Session">${resetSessionIcon}</a>
-
-        <a href="#" id="chat-overlay-button" class="social-icon" title="AI Chat">${chatIcon}</a>
-
-        <a href="#" id="add-profile-button" class="social-icon" title="Add Profile">${addProfileIcon}</a>
-
-        <a href="#" id="toggle-progress-overlay-button" class="social-icon" title="Show/Hide Progress">${progressOverlayIcon}</a> <!-- NEW BUTTON -->
-
-      `;
-
-
-
-    // After innerHTML is set, the elements are available in the DOM Fragment
-
-    const smartFillTriggerButton = triggerContainer.querySelector('#smart-fill-trigger-button');
-
-    const smartFillIconSpans = triggerContainer.querySelectorAll('.smart-fill-icon span');
-
-
-
-    if (smartFillTriggerButton) {
-
-      smartFillTriggerButton.style.background = currentButtonBgColor;
-
+  
+    const size = `${floatingMenuSize}px`;
+    triggerContainer.style.width = size;
+    triggerContainer.style.height = size;
+  
+    if (floatingMenuPosition) {
+      triggerContainer.style.left = `${floatingMenuPosition.left}px`;
+      triggerContainer.style.top = `${floatingMenuPosition.top}px`;
+      triggerContainer.style.bottom = 'auto';
+      triggerContainer.style.right = 'auto';
+    } else {
+      triggerContainer.style.right = '20px';
+      triggerContainer.style.bottom = '20px';
     }
-
+  
+    triggerContainer.innerHTML = `
+        <button id="smart-fill-trigger-button" style="background: ${currentButtonBgColor};">
+            <div class="smart-fill-icon">
+                <span style="background: ${currentIconSpanColor};"></span>
+                <span style="background: ${currentIconSpanColor};"></span>
+                <span style="background: ${currentIconSpanColor};"></span>
+            </div>
+        </button>
+        <a href="#" id="run-ai-button" class="social-icon" title="Run AI">${runAiIcon}</a>
+        <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">${fullscreenEnterIcon}</a>
+        <a href="#" id="reset-session-button" class="social-icon" title="Reset Session">${resetSessionIcon}</a>
+        <a href="#" id="chat-overlay-button" class="social-icon" title="AI Chat">${chatIcon}</a>
+        <a href="#" id="add-profile-button" class="social-icon" title="Add Profile">${addProfileIcon}</a>
+        <a href="#" id="toggle-progress-overlay-button" class="social-icon" title="Show/Hide Progress">${progressOverlayIcon}</a>
+      `;
+  
+    const smartFillIconSpans = triggerContainer.querySelectorAll('.smart-fill-icon span');
     smartFillIconSpans.forEach(span => {
-
       span.style.background = currentIconSpanColor;
-
     });
-
+  
     const style = document.createElement("style");
     style.id = "smart-fill-trigger-style";
     style.textContent = `
-    #smart-fill-trigger-container {
-      position: fixed; bottom: 20px; right: 20px; z-index: 2147483645;
-      width: 64px; height: 64px; display: flex; justify-content: center; align-items: center;
-      opacity: var(--smart-fill-trigger-container-opacity, 1); /* Apply opacity from variable */
-      transition: opacity 0.3s ease; /* Add transition for smooth changes */
-    }
-    #smart-fill-trigger-button {
-      width: 100%; height: 100%; background: var(--trigger-button-background-color, #EDE1FF); /* Use CSS variable */
-      border-radius: 18px; border: none;
-      display: flex; align-items: center; justify-content: center; cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-      transition: transform .3s cubic-bezier(0.68, -0.55, 0.265, 1.55), box-shadow .2s ease;
-      position: relative; z-index: 10;
-    }
-    #smart-fill-trigger-container.active #smart-fill-trigger-button { transform: rotate(45deg); }
-    #smart-fill-trigger-button:hover { box-shadow: 0 6px 15px rgba(0,0,0,0.28); }
-    #smart-fill-trigger-button .smart-fill-icon { display: flex; flex-direction: column; gap: 5px; transition: transform 0.2s ease; }
-    #smart-fill-trigger-container.active #smart-fill-trigger-button .smart-fill-icon { transform: rotate(-45deg); }
-    #smart-fill-trigger-button .smart-fill-icon span { 
-      width: 24px; height: 4px; background: var(--trigger-icon-span-background-color, #5E3BAE); /* Use CSS variable */
-      border-radius: 4px; 
-    }
-    .social-icon {
-      position: absolute; display: flex; align-items: center; justify-content: center;
-      width: 48px; height: 48px; border-radius: 50%; background: #f0f0f0;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); text-decoration: none;
-      opacity: 0; visibility: hidden; transform: scale(0.5);
-      transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55); z-index: 5;
-    }
-    #smart-fill-trigger-container.active .social-icon {
-        opacity: 1;
-        visibility: visible;
-        transform: scale(1);
-    }
-    
-    /* Distribute all floating action buttons in a fan layout */
-    #smart-fill-trigger-container.active #run-ai-button {
-      transform: translate(0, -80px); /* Top */
-      transition-delay: 0.05s;
-    }
-    #smart-fill-trigger-container.active #chat-overlay-button {
-      transform: translate(-57px, -57px); /* Diagonal Up-Left */
-      transition-delay: 0.1s;
-    }
-    #smart-fill-trigger-container.active #fullscreen-button {
-      transform: translate(-80px, 0); /* Left */
-      transition-delay: 0.15s;
-    }
-    #smart-fill-trigger-container.active #reset-session-button {
-      transform: translate(-107px, -107px); /* Custom position below left */
-      transition-delay: 0.2s;
-    }
-    #smart-fill-trigger-container.active #add-profile-button {
-      transform: translate(-57px, -137px); /* Up with slight left offset */
-      transition-delay: 0.22s;
-    }
-    #smart-fill-trigger-container.active #toggle-progress-overlay-button { /* NEW BUTTON POSITION */
-      transform: translate(0px, -140px); /* Adjust as needed for spacing */
-      transition-delay: 0.25s;
-    }
-
-
-    .social-icon:hover { 
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2); 
-    }
-    #run-ai-button:hover { background: #c8e6c9; }
-    #run-ai-button.processing, #run-ai-button.processing:hover { background-color: #ffcdd2; }
-    #fullscreen-button:hover { background: #bbdefb; }
-    #fullscreen-button.active, #fullscreen-button.active:hover { background-color: #81d4fa; }
-    #reset-session-button:hover { background: #ffecb3; }
-    #chat-overlay-button:hover { background: #d1c4e9; }
-    #add-profile-button:hover { background: #c8e4ff; }
-    #toggle-progress-overlay-button:hover { background: #e0f2f7; } /* New button hover */
-  `;
-
+      #smart-fill-trigger-container {
+        position: fixed; z-index: 2147483645;
+        display: flex; justify-content: center; align-items: center;
+        opacity: var(--smart-fill-trigger-container-opacity, 1);
+        /* Remove transition from here to apply it only for non-dragging scenarios */
+      }
+      #smart-fill-trigger-button {
+        width: 100%; height: 100%; background: var(--trigger-button-background-color, #EDE1FF);
+        border-radius: 18px; border: none;
+        display: flex; align-items: center; justify-content: center; cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        transition: transform .3s cubic-bezier(0.68, -0.55, 0.265, 1.55), box-shadow .2s ease;
+        position: relative; z-index: 10;
+      }
+      #smart-fill-trigger-container.active #smart-fill-trigger-button { transform: rotate(45deg); }
+      #smart-fill-trigger-button:hover { box-shadow: 0 6px 15px rgba(0,0,0,0.28); }
+      #smart-fill-trigger-button .smart-fill-icon { display: flex; flex-direction: column; gap: 5px; transition: transform 0.2s ease; }
+      #smart-fill-trigger-container.active #smart-fill-trigger-button .smart-fill-icon { transform: rotate(-45deg); }
+      #smart-fill-trigger-button .smart-fill-icon span {
+        width: 24px; height: 4px; background: var(--trigger-icon-span-background-color, #5E3BAE);
+        border-radius: 4px; 
+      }
+      .social-icon {
+        position: absolute; display: flex; align-items: center; justify-content: center;
+        width: 48px; height: 48px; border-radius: 50%; background: #f0f0f0;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); text-decoration: none;
+        opacity: 0; visibility: hidden; transform: scale(0.5);
+        transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55); z-index: 5;
+      }
+      #smart-fill-trigger-container.active .social-icon {
+          opacity: 1;
+          visibility: visible;
+          transform: scale(1);
+      }
+      
+      /* Distribute all floating action buttons in a fan layout */
+      #smart-fill-trigger-container.active #run-ai-button {
+        transform: translate(0, -80px); /* Top */
+        transition-delay: 0.05s;
+      }
+      #smart-fill-trigger-container.active #chat-overlay-button {
+        transform: translate(-57px, -57px); /* Diagonal Up-Left */
+        transition-delay: 0.1s;
+      }
+      #smart-fill-trigger-container.active #fullscreen-button {
+        transform: translate(-80px, 0); /* Left */
+        transition-delay: 0.15s;
+      }
+      #smart-fill-trigger-container.active #reset-session-button {
+        transform: translate(-107px, -107px); /* Custom position below left */
+        transition-delay: 0.2s;
+      }
+      #smart-fill-trigger-container.active #add-profile-button {
+        transform: translate(-57px, -137px); /* Up with slight left offset */
+        transition-delay: 0.22s;
+      }
+      #smart-fill-trigger-container.active #toggle-progress-overlay-button { /* NEW BUTTON POSITION */
+        transform: translate(0px, -140px); /* Adjust as needed for spacing */
+        transition-delay: 0.25s;
+      }
+  
+  
+      .social-icon:hover { 
+          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2); 
+      }
+      #run-ai-button:hover { background: #c8e6c9; }
+      #run-ai-button.processing, #run-ai-button.processing:hover { background-color: #ffcdd2; }
+      #fullscreen-button:hover { background: #bbdefb; }
+      #fullscreen-button.active, #fullscreen-button.active:hover { background-color: #81d4fa; }
+      #reset-session-button:hover { background: #ffecb3; }
+      #chat-overlay-button:hover { background: #d1c4e9; }
+      #add-profile-button:hover { background: #c8e4ff; }
+      #toggle-progress-overlay-button:hover { background: #e0f2f7; } /* New button hover */
+    `;
+  
     document.head.appendChild(style);
     document.body.appendChild(triggerContainer);
-
+  
+    const dragHandle = triggerContainer;
+    let isDragging = false;
+    let wasDragged = false;
+    let dragStartX, dragStartY, elStartX, elStartY;
+  
+    dragHandle.addEventListener('mousedown', (e) => {
+      // Only drag with the main mouse button and not on the action icons
+      if (e.button !== 0 || e.target.closest('.social-icon')) return;
+  
+      // Only start dragging if the menu is NOT active (expanded)
+      if (!triggerContainer.classList.contains('active')) {
+        wasDragged = false;
+        isDragging = true;
+  
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        const rect = triggerContainer.getBoundingClientRect();
+        elStartX = rect.left;
+        elStartY = rect.top;
+  
+        // Prevent text selection during drag
+        document.body.style.userSelect = 'none';
+  
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp, { once: true });
+      }
+    });
+  
+    function onMouseMove(e) {
+      if (!isDragging) return;
+      e.preventDefault();
+  
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+  
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        wasDragged = true;
+      }
+  
+      let newLeft = elStartX + dx;
+      let newTop = elStartY + dy;
+      const rect = triggerContainer.getBoundingClientRect();
+  
+      // Constrain movement within the viewport
+      newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - rect.width));
+      newTop = Math.max(0, Math.min(newTop, window.innerHeight - rect.height));
+  
+      triggerContainer.style.left = `${newLeft}px`;
+      triggerContainer.style.top = `${newTop}px`;
+      triggerContainer.style.right = 'auto';
+      triggerContainer.style.bottom = 'auto';
+    }
+  
+    function onMouseUp() {
+      isDragging = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.body.style.userSelect = ''; // Re-enable text selection
+  
+      if (wasDragged) {
+        const finalRect = triggerContainer.getBoundingClientRect();
+        chrome.storage.local.set({ floatingMenuPosition: { left: finalRect.left, top: finalRect.top } });
+      }
+    }
+  
     document.getElementById('smart-fill-trigger-button').addEventListener('click', (e) => {
       e.preventDefault();
-      triggerContainer.classList.toggle('active');
+      if (!wasDragged) {
+        triggerContainer.classList.toggle('active');
+      }
     });
-
+  
     document.getElementById('run-ai-button').addEventListener('click', (e) => {
       e.preventDefault();
       triggerContainer.classList.remove('active');
@@ -1646,13 +1715,13 @@ Response (number only or "NONE"):`;
         doSmartFill();
       }
     }, { capture: true });
-
+  
     document.getElementById('fullscreen-button').addEventListener('click', (e) => {
       e.preventDefault();
       handleFullscreen();
       triggerContainer.classList.remove('active');
     });
-
+  
     document.getElementById('reset-session-button').addEventListener('click', (e) => {
       e.preventDefault();
       chrome.storage.local.remove("answeredQuestionHashes", () => {
@@ -1660,27 +1729,27 @@ Response (number only or "NONE"):`;
       });
       triggerContainer.classList.remove('active');
     });
-
+  
     document.getElementById('chat-overlay-button').addEventListener('click', (e) => {
       e.preventDefault();
       const chatOverlay = document.getElementById('ai-chat-overlay-container');
       if (chatOverlay) chatOverlay.style.display = 'flex';
       triggerContainer.classList.remove('active');
     });
-
+  
     document.getElementById('add-profile-button').addEventListener('click', (e) => {
       e.preventDefault();
       triggerContainer.classList.remove('active');
       startGuidedProfileCreation(null, window.location.hostname);
     });
-
+  
     // Listener for toggling progress overlay from outside the smart fill process
     document.getElementById('toggle-progress-overlay-button').addEventListener('click', (e) => { // NEW LISTENER
       e.preventDefault();
       toggleProgressOverlay(); // Toggle visibility
     });
-
-
+  
+  
     updateFullscreenButtonState();
     updateAiButtonState(false);
     document.addEventListener('fullscreenchange', updateFullscreenButtonState);
@@ -1691,7 +1760,6 @@ Response (number only or "NONE"):`;
     });
     createChatOverlay(); // Create the chat window, but keep it hidden
   }
-
   function createChatOverlay() {
     if (document.getElementById('ai-chat-overlay-container')) return;
 
@@ -3802,8 +3870,6 @@ Response (number only or "NONE"):`;
       // Removed for better compatibility with dynamic content where positions change.
       // If the selector is not unique enough, the user might need to adjust their selection.
       // The current strategy relies more on classes and tag names.
-
-
 
       parts.unshift(part);
       currentEl = currentEl.parentElement;
