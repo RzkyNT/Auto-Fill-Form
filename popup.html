@@ -705,15 +705,6 @@
       background: rgba(255, 107, 122, 0.15);
       border-radius: 50%;
     }
-
-    #update-banner:hover {
-      transform: scale(1.02);
-      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-    }
-
-    #update-banner {
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
   </style>
 </head>
 
@@ -725,20 +716,6 @@
         <h3>Smart Filler</h3>
         <p class="subhead">Auto-fill forms with Gemini or OpenAI intelligence.</p>
       </div>
-      <!-- Update Available Banner -->
-      <div id="update-banner"
-        style="display: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 15px; border-radius: 10px; margin-bottom: 15px; cursor: pointer;"
-        onclick="window.open(document.getElementById('update-banner').dataset.url, '_blank')">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 1.5em;">🚀</span>
-          <div>
-            <strong>Update Available!</strong>
-            <p style="margin: 0; font-size: 0.85em; opacity: 0.9;">Version <span id="new-version"></span> is available.
-              Click to update.</p>
-          </div>
-        </div>
-      </div>
-
       <label class="switch" id="theme-toggle-label">
         <input type="checkbox" id="dark-mode-toggle" />
         <div class="theme-icon">
@@ -928,6 +905,18 @@
             <input type="checkbox" id="show-floating-menu" checked />
             Show Floating Menu
           </label>
+
+          <h4 style="margin-top: 15px;">Trigger Button Style</h4>
+          <div class="provider-card" style="margin-top:0; padding-top: 5px; padding-bottom: 5px;">
+            <label>
+                <input type="radio" name="trigger-style" value="default" /> Default Icon
+            </label>
+          </div>
+          <div class="provider-card">
+            <label>
+                <input type="radio" name="trigger-style" value="assistive" /> Assistive Touch Style
+            </label>
+          </div>
 
           <label for="floating-menu-size" style="margin-top: 10px;">Floating Menu Size</label>
           <input type="range" id="floating-menu-size" min="40" max="100" value="64" style="width: 100%;" />

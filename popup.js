@@ -107,7 +107,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Load other non-activation-related settings from storage
-  chrome.storage.local.get(["autoRun", "fillMode", "personalizedData", "personalFillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity", "showFloatingMenu", "floatingMenuSize"], (result) => {
+  chrome.storage.local.get(["autoRun", "fillMode", "personalizedData", "personalFillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity", "showFloatingMenu", "floatingMenuSize", "triggerStyle"], (result) => {
     autoRunCheckbox.checked = !!result.autoRun;
     showFloatingMenuCheckbox.checked = result.showFloatingMenu !== false; // Default to true
 
@@ -124,6 +124,12 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll('input[name="personal-fill-mode"]').forEach(radio => {
       radio.checked = radio.value === personalFillMode;
     });
+
+    const triggerStyle = result.triggerStyle || 'default'; // Default to 'default'
+    document.querySelectorAll('input[name="trigger-style"]').forEach(radio => {
+        radio.checked = radio.value === triggerStyle;
+    });
+    updateUiForTriggerStyle(triggerStyle);
 
     console.log("[Popup.js] Loaded settings from storage:", result);
 
@@ -257,6 +263,37 @@ document.querySelectorAll('input[name="personal-fill-mode"]').forEach(radio => {
     }
   });
 });
+
+// Save Trigger Style setting
+document.querySelectorAll('input[name="trigger-style"]').forEach(radio => {
+  radio.addEventListener("change", () => {
+    if (radio.checked) {
+      const style = radio.value;
+      chrome.storage.local.set({ triggerStyle: style });
+      sendTriggerStyleUpdateToContentScript(style); // Send update to content script
+      updateUiForTriggerStyle(style); // Update popup UI
+    }
+  });
+});
+
+function updateUiForTriggerStyle(style) {
+  const bgColorPicker = document.getElementById('trigger-button-bg-color');
+  const bgColorLabel = document.querySelector('label[for="trigger-button-bg-color"]');
+  const iconColorPicker = document.getElementById('trigger-icon-span-color');
+  const iconColorLabel = document.querySelector('label[for="trigger-icon-span-color"]');
+
+  const isDisabled = style === 'assistive';
+  
+  bgColorPicker.disabled = isDisabled;
+  bgColorPicker.parentElement.style.opacity = isDisabled ? '0.5' : '1';
+  bgColorPicker.parentElement.style.cursor = isDisabled ? 'not-allowed' : '';
+  bgColorLabel.style.opacity = isDisabled ? '0.5' : '1';
+
+  iconColorPicker.disabled = isDisabled;
+  iconColorPicker.parentElement.style.opacity = isDisabled ? '0.5' : '1';
+  iconColorPicker.parentElement.style.cursor = isDisabled ? 'not-allowed' : '';
+  iconColorLabel.style.opacity = isDisabled ? '0.5' : '1';
+}
 
 // Persist provider selection immediately
 providerRadios.forEach(radio => {
@@ -1364,21 +1401,27 @@ if (importProfilesFromPasteButton) {
 // ============================================
 async function checkForUpdates() {
   try {
-    const response = await fetch('https://raw.githubusercontent.com/RzkyNT/Auto-Fill-Form/main/version.json');
+    const response = await fetch('https://raw.githubusercontent.com/RzkyNT/Auto-Fill-Form/main/version.json?t=' + Date.now()); // bust cache
     const data = await response.json();
 
     const currentVersion = chrome.runtime.getManifest().version;
     const latestVersion = data.version;
 
     if (latestVersion !== currentVersion) {
-      const updateBanner = document.getElementById('update-banner');
-      const newVersionSpan = document.getElementById('new-version');
-
-      if (updateBanner && newVersionSpan) {
-        newVersionSpan.textContent = latestVersion;
-        updateBanner.dataset.url = data.release_url;
-        updateBanner.style.display = 'block';
-      }
+        Swal.fire({
+            title: 'Update Available!',
+            html: `Version <strong>${latestVersion}</strong> is available. You are using version <strong>${currentVersion}</strong>.`,
+            icon: 'info',
+            showCancelButton: true,
+            confirmButtonText: 'Go to Update',
+            cancelButtonText: 'Later',
+            background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+            color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.open(data.release_url, '_blank');
+            }
+        });
     }
   } catch (error) {
     console.log('Update check failed:', error);
@@ -1430,6 +1473,22 @@ async function sendFloatingMenuSizeToContentScript(size) {
     });
   } catch (error) {
     console.log('[Popup.js] Content script not loaded on this page');
+  }
+}
+
+// NEW FUNCTION: Send trigger style update to content script
+async function sendTriggerStyleUpdateToContentScript(style) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+      return;
+    }
+    await chrome.tabs.sendMessage(tab.id, {
+      action: 'updateTriggerStyle',
+      style: style
+    });
+  } catch (error) {
+    console.log('[Popup.js] Content script not loaded on this page (expected for some pages)');
   }
 }
 

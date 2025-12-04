@@ -64,7 +64,11 @@ function initContentScript() {
       console.log(`[Content.js] Handling updateColor: elementId=${request.elementId}, color=${request.color}`);
       if (request.elementId === 'trigger-button-bg-color') {
         cachedTriggerButtonBgColor = request.color; // Cache the value
-        updateTriggerColorVariable('--trigger-button-background-color', request.color);
+        chrome.storage.local.get('triggerStyle', result => {
+          if (result.triggerStyle !== 'assistive') {
+            updateTriggerColorVariable('--trigger-button-background-color', request.color);
+          }
+        });
       } else if (request.elementId === 'trigger-icon-span-color') {
         cachedTriggerIconSpanColor = request.color; // Cache the value
         updateTriggerColorVariable('--trigger-icon-span-background-color', request.color);
@@ -92,6 +96,15 @@ function initContentScript() {
         container.style.height = size;
       }
       sendResponse({ status: 'size updated' });
+    } else if (request.action === 'updateTriggerStyle') {
+      const container = document.getElementById('smart-fill-trigger-container');
+      if (container) {
+        // Remove existing style classes
+        container.classList.remove('smart-fill-trigger-default', 'smart-fill-trigger-assistive');
+        // Add the new style class
+        container.classList.add(`smart-fill-trigger-${request.style}`);
+      }
+      sendResponse({ status: 'trigger style updated' });
     } else if (request.action === 'resetFloatingMenuPosition') {
       chrome.storage.local.remove('floatingMenuPosition', () => {
         const container = document.getElementById('smart-fill-trigger-container');
@@ -1482,14 +1495,16 @@ Response (number only or "NONE"):`;
       triggerButtonOpacity,
       showFloatingMenu,
       floatingMenuSize,
-      floatingMenuPosition
+      floatingMenuPosition,
+      triggerStyle // NEW: get triggerStyle
     } = await chrome.storage.local.get({
       triggerButtonBgColor: '#EDE1FF',
       triggerIconSpanColor: '#5E3BAE',
       triggerButtonOpacity: 100,
       showFloatingMenu: true,
       floatingMenuSize: 64,
-      floatingMenuPosition: null
+      floatingMenuPosition: null,
+      triggerStyle: 'default' // NEW: default value
     });
   
     if (showFloatingMenu === false) {
@@ -1504,39 +1519,40 @@ Response (number only or "NONE"):`;
       return;
     }
   
-    const currentButtonBgColor = cachedTriggerButtonBgColor || triggerButtonBgColor;
-    const currentIconSpanColor = cachedTriggerIconSpanColor || triggerIconSpanColor;
-    const currentOpacity = cachedTriggerButtonOpacity !== null ? cachedTriggerButtonOpacity : (parseFloat(triggerButtonOpacity) / 100);
-  
-    const progressOverlayIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M200-200v-560h560v560H200Zm0 80h560q33 0 56.5-23.5T840-200v-560q0-33-23.5-56.5T760-840H200q-33 0-56.5 23.5T80-760v560q0 33 23.5 56.5T200-120Zm80-80h400v-400H280v400Zm-80 0v-560 560Z"/></svg>`;
-  
-    const triggerContainer = document.createElement("div");
-    triggerContainer.id = "smart-fill-trigger-container";
-    triggerContainer.style.opacity = currentOpacity;
-  
-    const size = `${floatingMenuSize}px`;
-    triggerContainer.style.width = size;
-    triggerContainer.style.height = size;
-  
-    if (floatingMenuPosition) {
-      triggerContainer.style.left = `${floatingMenuPosition.left}px`;
-      triggerContainer.style.top = `${floatingMenuPosition.top}px`;
-      triggerContainer.style.bottom = 'auto';
-      triggerContainer.style.right = 'auto';
-    } else {
-      triggerContainer.style.right = '20px';
-      triggerContainer.style.bottom = '20px';
-    }
-  
-    triggerContainer.innerHTML = `
-        <button id="smart-fill-trigger-button" style="background: ${currentButtonBgColor};">
-            <div class="smart-fill-icon">
-                <span style="background: ${currentIconSpanColor};"></span>
-                <span style="background: ${currentIconSpanColor};"></span>
-                <span style="background: ${currentIconSpanColor};"></span>
-            </div>
-        </button>
-        <a href="#" id="run-ai-button" class="social-icon" title="Run AI">${runAiIcon}</a>
+        const currentButtonBgColor = cachedTriggerButtonBgColor || triggerButtonBgColor;
+        const currentIconSpanColor = cachedTriggerIconSpanColor || triggerIconSpanColor;
+        const currentOpacity = cachedTriggerButtonOpacity !== null ? cachedTriggerButtonOpacity : (parseFloat(triggerButtonOpacity) / 100);
+        const buttonStyle = triggerStyle === 'assistive' ? '' : `style="background: ${currentButtonBgColor};"`;
+      
+        const progressOverlayIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M200-200v-560h560v560H200Zm0 80h560q33 0 56.5-23.5T840-200v-560q0-33-23.5-56.5T760-840H200q-33 0-56.5 23.5T80-760v560q0 33 23.5 56.5T200-120Zm80-80h400v-400H280v400Zm-80 0v-560 560Z"/></svg>`;
+      
+        const triggerContainer = document.createElement("div");
+        triggerContainer.id = "smart-fill-trigger-container";
+        triggerContainer.style.opacity = currentOpacity;
+        triggerContainer.classList.add(`smart-fill-trigger-${triggerStyle}`); // NEW: Add class based on triggerStyle
+    
+        const size = `${floatingMenuSize}px`;
+        triggerContainer.style.width = size;
+        triggerContainer.style.height = size;
+      
+        if (floatingMenuPosition) {
+          triggerContainer.style.left = `${floatingMenuPosition.left}px`;
+          triggerContainer.style.top = `${floatingMenuPosition.top}px`;
+          triggerContainer.style.bottom = 'auto';
+          triggerContainer.style.right = 'auto';
+        } else {
+          triggerContainer.style.right = '20px';
+          triggerContainer.style.bottom = '20px';
+        }
+      
+        triggerContainer.innerHTML = `
+            <button id="smart-fill-trigger-button" ${buttonStyle}>
+                <div class="smart-fill-icon">
+                    <span style="background: ${currentIconSpanColor};"></span>
+                    <span style="background: ${currentIconSpanColor};"></span>
+                    <span style="background: ${currentIconSpanColor};"></span>
+                </div>
+            </button>        <a href="#" id="run-ai-button" class="social-icon" title="Run AI">${runAiIcon}</a>
         <a href="#" id="fullscreen-button" class="social-icon" title="Toggle Fullscreen">${fullscreenEnterIcon}</a>
         <a href="#" id="reset-session-button" class="social-icon" title="Reset Session">${resetSessionIcon}</a>
         <a href="#" id="chat-overlay-button" class="social-icon" title="AI Chat">${chatIcon}</a>
@@ -1558,9 +1574,11 @@ Response (number only or "NONE"):`;
         opacity: var(--smart-fill-trigger-container-opacity, 1);
         /* Remove transition from here to apply it only for non-dragging scenarios */
       }
+
+      /* Base button styles */
       #smart-fill-trigger-button {
-        width: 100%; height: 100%; background: var(--trigger-button-background-color, #EDE1FF);
-        border-radius: 18px; border: none;
+        width: 100%; height: 100%;
+        border: none;
         display: flex; align-items: center; justify-content: center; cursor: pointer;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
         transition: transform .3s cubic-bezier(0.68, -0.55, 0.265, 1.55), box-shadow .2s ease;
@@ -1568,12 +1586,47 @@ Response (number only or "NONE"):`;
       }
       #smart-fill-trigger-container.active #smart-fill-trigger-button { transform: rotate(45deg); }
       #smart-fill-trigger-button:hover { box-shadow: 0 6px 15px rgba(0,0,0,0.28); }
-      #smart-fill-trigger-button .smart-fill-icon { display: flex; flex-direction: column; gap: 5px; transition: transform 0.2s ease; }
-      #smart-fill-trigger-container.active #smart-fill-trigger-button .smart-fill-icon { transform: rotate(-45deg); }
-      #smart-fill-trigger-button .smart-fill-icon span {
-        width: 24px; height: 4px; background: var(--trigger-icon-span-background-color, #5E3BAE);
-        border-radius: 4px; 
+
+      /* Default Icon Style */
+      .smart-fill-trigger-default #smart-fill-trigger-button {
+        border-radius: 18px; /* Square-ish button */
+        background: var(--trigger-button-background-color, #EDE1FF);
       }
+      .smart-fill-trigger-default #smart-fill-trigger-button .smart-fill-icon {
+        display: flex; /* Make icon visible */
+        flex-direction: column; gap: 5px; transition: transform 0.2s ease;
+      }
+      .smart-fill-trigger-default #smart-fill-trigger-container.active #smart-fill-trigger-button .smart-fill-icon {
+        transform: rotate(-45deg);
+      }
+      .smart-fill-trigger-default #smart-fill-trigger-button .smart-fill-icon span {
+        width: 24px; height: 4px; background: var(--trigger-icon-span-background-color, #5E3BAE);
+        border-radius: 4px;
+      }
+      .smart-fill-trigger-default #smart-fill-trigger-button::before {
+        content: none; /* No ring for default style */
+      }
+
+
+      /* Assistive Touch Style */
+      .smart-fill-trigger-assistive #smart-fill-trigger-button {
+        border-radius: 50%; /* Circular button */
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.92) 30%, #202124 63%, rgba(80, 80, 80, 0.90) 100%);
+      }
+      /* Ring inner biar mirip AT */
+      .smart-fill-trigger-assistive #smart-fill-trigger-button::before {
+        content: "";
+        position: absolute;
+        width: 60%; height: 60%;
+        border-radius: 50%;
+        border: 2px solid rgba(255,255,255,0.6);
+        background: transparent;
+      }
+      /* Hilangkan icon bars karena sudah tidak perlu dipakai */
+      .smart-fill-trigger-assistive #smart-fill-trigger-button .smart-fill-icon {
+        display: none;
+      }
+
       .social-icon {
         position: absolute; display: flex; align-items: center; justify-content: center;
         width: 48px; height: 48px; border-radius: 50%; background: #f0f0f0;
@@ -1614,8 +1667,8 @@ Response (number only or "NONE"):`;
       }
   
   
-      .social-icon:hover { 
-          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2); 
+      .social-icon:hover {
+          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
       }
       #run-ai-button:hover { background: #c8e6c9; }
       #run-ai-button.processing, #run-ai-button.processing:hover { background-color: #ffcdd2; }
