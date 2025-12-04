@@ -993,19 +993,24 @@
           </h4>
           <p class="history-subhead">Export or import all your settings, API keys, and personalized data.</p>
 
-          <!-- Export Button -->
-          <button id="export-all-settings" class="button-primary">Export All Settings</button>
-
+          <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button id="export-all-settings" class="button-primary" style="flex: 1;">
+              Export to File
+            </button>
+          </div>
+          <label for="import-settings-file-input" class="button-primary"
+            style="flex: 1; text-align: center; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 0;">
+            Import from File
+          </label>
+          <input type="file" id="import-settings-file-input" accept=".json" style="display: none;">
           <!-- Import Options -->
           <div style="display: flex; gap: 10px; margin-top: 10px;">
-            <label for="import-settings-file-input" class="button-primary"
-              style="flex: 1; text-align: center; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 0;">
-              Import from File
-            </label>
-            <input type="file" id="import-settings-file-input" accept=".json" style="display: none;">
 
+            <button id="copy-settings-clipboard" class="button-primary" style="flex: 1;">
+              Export Settings via Copy
+            </button>
             <button id="toggle-paste-import" class="button-primary" style="flex: 1;">
-              Import via Paste
+              Import Settings via Paste
             </button>
           </div>
 
@@ -1084,13 +1089,45 @@
       <button id="add-new-profile" class="button-primary">Add New Profile</button>
       <button id="open-test-profile" class="button-primary">Open Profile Test Page</button>
 
-      <div style="margin-top: 20px; display: flex; gap: 10px;">
-        <button id="export-profiles" class="button-primary" style="flex: 1;">Export Profiles</button>
+      <!-- Export Options -->
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <button id="export-profiles" class="button-primary" style="flex: 1;">
+          Export to File
+        </button>
         <label for="import-file-input" class="button-primary"
           style="flex: 1; text-align: center; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 0;">
-          Import Profiles
+          Import from File
         </label>
         <input type="file" id="import-file-input" accept=".json" style="display: none;">
+      </div>
+
+      <!-- Import Options -->
+      <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <button id="copy-profiles-clipboard" class="button-primary" style="flex: 1;">
+          Export Profiles via Copy
+        </button>
+        <button id="toggle-paste-profiles" class="button-primary" style="flex: 1;">
+          Import Profiles via Paste
+        </button>
+      </div>
+
+      <!-- Paste Import Area for Profiles -->
+      <div id="paste-profiles-container" style="display: none; margin-top: 15px;">
+        <label for="paste-profiles-textarea" style="display: block; margin-bottom: 8px; font-weight: 600;">
+          Paste your profiles JSON here:
+        </label>
+        <textarea id="paste-profiles-textarea" class="api-key-input" rows="8"
+          placeholder='Paste the entire content of your profiles JSON file here...'
+          style="font-family: Courier New, monospace; font-size: 0.75em; resize: vertical;"></textarea>
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+          <button id="import-profiles-from-paste" class="button-primary" style="flex: 1;">
+            Import Profiles
+          </button>
+          <button id="cancel-paste-profiles" class="button-primary"
+            style="flex: 1; background: transparent; color: var(--color-text); border: 1px solid var(--color-border);">
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   </div> <!-- End of profiles-view -->

@@ -1163,3 +1163,187 @@ if (importSettingsFileInput) {
   });
 }
 
+// ============================================
+// COPY TO CLIPBOARD - SETTINGS
+// ============================================
+const copySettingsClipboardButton = document.getElementById('copy-settings-clipboard');
+
+if (copySettingsClipboardButton) {
+  copySettingsClipboardButton.addEventListener('click', async () => {
+    try {
+      const allSettings = await chrome.storage.local.get(null);
+
+      const backup = {
+        exportDate: new Date().toISOString(),
+        version: chrome.runtime.getManifest().version,
+        settings: {
+          autoRun: allSettings.autoRun,
+          fillMode: allSettings.fillMode,
+          personalFillMode: allSettings.personalFillMode,
+          showFloatingMenu: allSettings.showFloatingMenu,
+          themeMode: allSettings.themeMode,
+          triggerButtonBgColor: allSettings.triggerButtonBgColor,
+          triggerIconSpanColor: allSettings.triggerIconSpanColor,
+          triggerButtonOpacity: allSettings.triggerButtonOpacity,
+          aiProvider: allSettings.aiProvider,
+          apiKeys: allSettings.apiKeys,
+          openAiConfig: allSettings.openAiConfig,
+          personalizedData: allSettings.personalizedData,
+          customProfiles: allSettings.customProfiles
+        }
+      };
+
+      await navigator.clipboard.writeText(JSON.stringify(backup, null, 2));
+
+      const originalText = copySettingsClipboardButton.textContent;
+      copySettingsClipboardButton.textContent = 'Copied!';
+      copySettingsClipboardButton.style.background = '#25D366';
+
+      setTimeout(() => {
+        copySettingsClipboardButton.textContent = originalText;
+        copySettingsClipboardButton.style.background = '';
+      }, 2000);
+
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+      Swal.fire({
+        title: 'Copy Failed!',
+        text: `Could not copy to clipboard: ${error.message}`,
+        icon: 'error',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+    }
+  });
+}
+
+// ============================================
+// COPY TO CLIPBOARD - PROFILES
+// ============================================
+const copyProfilesClipboardButton = document.getElementById('copy-profiles-clipboard');
+
+if (copyProfilesClipboardButton) {
+  copyProfilesClipboardButton.addEventListener('click', async () => {
+    try {
+      const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
+
+      await navigator.clipboard.writeText(JSON.stringify(customProfiles, null, 2));
+
+      const originalText = copyProfilesClipboardButton.textContent;
+      copyProfilesClipboardButton.textContent = 'Copied!';
+      copyProfilesClipboardButton.style.background = '#25D366';
+
+      setTimeout(() => {
+        copyProfilesClipboardButton.textContent = originalText;
+        copyProfilesClipboardButton.style.background = '';
+      }, 2000);
+
+    } catch (error) {
+      console.error('Error copying profiles:', error);
+      Swal.fire({
+        title: 'Copy Failed!',
+        text: `Could not copy to clipboard: ${error.message}`,
+        icon: 'error',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+    }
+  });
+}
+
+// ============================================
+// PASTE IMPORT - PROFILES
+// ============================================
+const togglePasteProfilesButton = document.getElementById('toggle-paste-profiles');
+const pasteProfilesContainer = document.getElementById('paste-profiles-container');
+const cancelPasteProfilesButton = document.getElementById('cancel-paste-profiles');
+const importProfilesFromPasteButton = document.getElementById('import-profiles-from-paste');
+const pasteProfilesTextarea = document.getElementById('paste-profiles-textarea');
+
+if (togglePasteProfilesButton) {
+  togglePasteProfilesButton.addEventListener('click', () => {
+    pasteProfilesContainer.style.display = 'block';
+    pasteProfilesTextarea.focus();
+  });
+}
+
+if (cancelPasteProfilesButton) {
+  cancelPasteProfilesButton.addEventListener('click', () => {
+    pasteProfilesContainer.style.display = 'none';
+    pasteProfilesTextarea.value = '';
+  });
+}
+
+if (importProfilesFromPasteButton) {
+  importProfilesFromPasteButton.addEventListener('click', async () => {
+    const jsonText = pasteProfilesTextarea.value.trim();
+
+    if (!jsonText) {
+      Swal.fire({
+        title: 'Error!',
+        text: 'Please paste your profiles JSON first.',
+        icon: 'error',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+      return;
+    }
+
+    try {
+      const importedProfiles = JSON.parse(jsonText);
+
+      if (typeof importedProfiles !== 'object' || Array.isArray(importedProfiles)) {
+        throw new Error('Invalid JSON format. Expected an object.');
+      }
+
+      for (const hostname in importedProfiles) {
+        const profile = importedProfiles[hostname];
+        if (!profile.questionListContainer || !profile.questionBlock || !profile.questionText || !profile.answerField) {
+          throw new Error(`Profile for ${hostname} has an invalid structure.`);
+        }
+      }
+
+      const { customProfiles } = await chrome.storage.local.get({ customProfiles: {} });
+
+      const confirmResult = await Swal.fire({
+        title: 'Import Profiles',
+        html: `Do you want to merge these profiles with your existing ones?
+               <br><br>Existing profiles with the same hostname will be <strong>overwritten</strong>.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, import them!',
+        cancelButtonText: 'No, cancel',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+
+      if (confirmResult.isConfirmed) {
+        const mergedProfiles = { ...customProfiles, ...importedProfiles };
+        await chrome.storage.local.set({ customProfiles: mergedProfiles });
+
+        pasteProfilesTextarea.value = '';
+        pasteProfilesContainer.style.display = 'none';
+
+        loadProfiles();
+
+        Swal.fire({
+          title: 'Profiles Imported!',
+          text: 'Your custom profiles have been successfully imported.',
+          icon: 'success',
+          background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+          color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+        });
+      }
+
+    } catch (error) {
+      console.error('Error importing profiles from paste:', error);
+      Swal.fire({
+        title: 'Import Failed!',
+        text: `Error: ${error.message}. Please make sure you pasted valid JSON.`,
+        icon: 'error',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+    }
+  });
+}
