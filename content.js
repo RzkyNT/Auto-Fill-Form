@@ -1451,6 +1451,44 @@ Response (number only or "NONE"):`;
   function createChatOverlay() {
     if (document.getElementById('ai-chat-overlay-container')) return;
 
+    const normalizeNewlines = (value = '') => value.replace(/\r\n?/g, '\n');
+
+    const autoResizeTextarea = (textarea) => {
+      if (!textarea) return () => {};
+      const resize = () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+      };
+      ['input', 'change'].forEach(evt => textarea.addEventListener(evt, resize));
+      textarea.addEventListener('paste', () => requestAnimationFrame(resize));
+      resize();
+      return resize;
+    };
+
+    const preservePasteFormatting = (textarea) => {
+      if (!textarea) return;
+      textarea.addEventListener('paste', (event) => {
+        event.preventDefault();
+        const clipboard = event.clipboardData || window.clipboardData;
+        const pastedText = clipboard?.getData('text') ?? '';
+        const sanitized = normalizeNewlines(pastedText);
+
+        if (typeof textarea.setRangeText === 'function') {
+          const start = textarea.selectionStart ?? textarea.value.length;
+          const end = textarea.selectionEnd ?? start;
+          textarea.setRangeText(sanitized, start, end, 'end');
+        } else {
+          const start = textarea.selectionStart ?? textarea.value.length;
+          const end = textarea.selectionEnd ?? start;
+          const value = textarea.value;
+          textarea.value = value.slice(0, start) + sanitized + value.slice(end);
+          textarea.selectionStart = textarea.selectionEnd = start + sanitized.length;
+        }
+
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+
     const chatContainer = document.createElement('div');
     chatContainer.id = 'ai-chat-overlay-container';
     chatContainer.style.display = 'none';
@@ -1465,7 +1503,7 @@ Response (number only or "NONE"):`;
       </div>
       <div id="ai-chat-messages"></div>
       <form id="ai-chat-form">
-        <input type="text" id="ai-chat-input" placeholder="Ask the AI..." autocomplete="off">
+        <textarea id="ai-chat-input" placeholder="Ask the AI..." autocomplete="off" rows="1"></textarea>
         <button type="submit">Send</button>
       </form>
     </div>
@@ -1481,8 +1519,9 @@ Response (number only or "NONE"):`;
     #ai-chat-close-button { font-size: 24px; padding: 0 5px; }
     #ai-chat-clear-button { font-size: 14px; border: 1px solid #555; padding: 4px 8px; border-radius: 6px;}
     #ai-chat-clear-button:hover, #ai-chat-close-button:hover { color: #fff; }
-    #ai-chat-messages { flex-grow: 1; overflow-y: auto; padding: 20px; }
-    .chat-message-bubble { max-width: 85%; padding: 10px 15px; border-radius: 15px; margin-bottom: 12px; line-height: 1.5; word-wrap: break-word; }
+    #ai-chat-messages { flex-grow: 1; overflow-y: auto; padding: 20px; scrollbar-width: none; -ms-overflow-style: none; }
+    #ai-chat-messages::-webkit-scrollbar { display: none; }
+    .chat-message-bubble { max-width: 85%; padding: 10px 15px; border-radius: 15px; margin-bottom: 12px; line-height: 1.5; word-wrap: break-word; white-space: pre-wrap; }
     .user-message { background: #25D366; color: #04070D; margin-left: auto; border-bottom-right-radius: 4px; }
     .bot-message { background: #11161C; color: #F2F4F6; margin-right: auto; border-bottom-left-radius: 4px; }
     .bot-message.error { background: rgba(255,107,122,0.2); color: #ff6b7a; }
@@ -1490,9 +1529,10 @@ Response (number only or "NONE"):`;
     .loading-dots span:nth-of-type(2) { animation-delay: -1.1s; }
     .loading-dots span:nth-of-type(3) { animation-delay: -0.9s; }
     @keyframes wave { 0%, 60%, 100% { transform: initial; } 30% { transform: translateY(-8px); } }
-    #ai-chat-form { display: flex; gap: 10px; padding: 15px 20px; border-top: 1px solid rgba(255,255,255,0.1); }
-    #ai-chat-input { flex-grow: 1; background: #11161C; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; color: #F2F4F6; }
-    #ai-chat-form button { background: #25D366; color: #04070D; border: none; border-radius: 8px; padding: 10px 15px; cursor: pointer; }
+    #ai-chat-form { display: flex; gap: 10px; padding: 15px 20px; border-top: 1px solid rgba(255,255,255,0.1); align-items: center; justify-content: center; text-align: center; }
+    #ai-chat-input { flex-grow: 1; background: #11161C; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; color: #F2F4F6; min-height: 44px; max-height: 200px; resize: none; line-height: 1.45; font-family: inherit; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+    #ai-chat-input::-webkit-scrollbar { display: none; }
+    #ai-chat-form button { background: #25D366; color: #04070D; border: none; border-radius: 8px; padding: 10px 15px; cursor: pointer; align-items:center; display:flex;}
 
     .chat-message-bubble { position: relative; } /* Needed for absolute positioning of button */
     .copy-message-button {
@@ -1522,6 +1562,8 @@ Response (number only or "NONE"):`;
     const messagesContainer = document.getElementById('ai-chat-messages');
     const chatForm = document.getElementById('ai-chat-form');
     const input = document.getElementById('ai-chat-input');
+    preservePasteFormatting(input);
+    const resizeInput = autoResizeTextarea(input);
 
     document.getElementById('ai-chat-close-button').addEventListener('click', () => chatContainer.style.display = 'none');
     chatContainer.addEventListener('click', (e) => { if (e.target === chatContainer) chatContainer.style.display = 'none'; });
@@ -1529,16 +1571,18 @@ Response (number only or "NONE"):`;
 
     chatForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      const messageText = input.value.trim();
-      if (!messageText) return;
+      const rawMessageText = normalizeNewlines(input.value || '');
+      const trimmedPreview = rawMessageText.trim();
+      if (!trimmedPreview) return;
 
-      const userMessage = { sender: 'user', text: messageText, timestamp: Date.now() };
+      const userMessage = { sender: 'user', text: rawMessageText, timestamp: Date.now() };
       appendChatMessage(userMessage);
       saveChatMessage(userMessage);
       input.value = '';
+      resizeInput();
       showChatLoadingIndicator();
 
-      chrome.runtime.sendMessage({ action: "callChatApi", prompt: messageText }, (response) => {
+      chrome.runtime.sendMessage({ action: "callChatApi", prompt: rawMessageText }, (response) => {
         removeChatLoadingIndicator();
         const text = chrome.runtime.lastError?.message || response.error || response.answer;
         const isError = !!(chrome.runtime.lastError || response.error);
