@@ -931,3 +931,150 @@ function setupAccordionBehavior() {
   });
 }
 
+// Export/Import All Settings Feature
+const exportAllSettingsButton = document.getElementById('export-all-settings');
+const importAllSettingsButton = document.getElementById('import-all-settings');
+const importSettingsFileInput = document.getElementById('import-settings-file-input');
+
+if (exportAllSettingsButton) {
+  exportAllSettingsButton.addEventListener('click', async () => {
+    try {
+      // Get all settings from storage (excluding sensitive activation data)
+      const allSettings = await chrome.storage.local.get(null);
+
+      // Create backup object with metadata
+      const backup = {
+        exportDate: new Date().toISOString(),
+        version: chrome.runtime.getManifest().version,
+        settings: {
+          // General Settings
+          autoRun: allSettings.autoRun,
+          fillMode: allSettings.fillMode,
+          personalFillMode: allSettings.personalFillMode,
+          showFloatingMenu: allSettings.showFloatingMenu,
+          themeMode: allSettings.themeMode,
+
+          // UI Settings
+          triggerButtonBgColor: allSettings.triggerButtonBgColor,
+          triggerIconSpanColor: allSettings.triggerIconSpanColor,
+          triggerButtonOpacity: allSettings.triggerButtonOpacity,
+
+          // AI Configuration
+          aiProvider: allSettings.aiProvider,
+          apiKeys: allSettings.apiKeys,
+          openAiConfig: allSettings.openAiConfig,
+
+          // Personal Data
+          personalizedData: allSettings.personalizedData,
+
+          // Custom Profiles
+          customProfiles: allSettings.customProfiles
+        }
+      };
+
+      // Convert to JSON
+      const jsonString = JSON.stringify(backup, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      // Create download link
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `smart-filler-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      Swal.fire({
+        title: 'Export Successful!',
+        text: 'All your settings have been exported successfully.',
+        icon: 'success',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+
+    } catch (error) {
+      console.error('Error exporting settings:', error);
+      Swal.fire({
+        title: 'Export Failed!',
+        text: `There was an error exporting your settings: ${error.message}`,
+        icon: 'error',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+    }
+  });
+}
+
+if (importAllSettingsButton) {
+  importAllSettingsButton.addEventListener('click', () => {
+    importSettingsFileInput.click();
+  });
+}
+
+if (importSettingsFileInput) {
+  importSettingsFileInput.addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const backup = JSON.parse(e.target.result);
+
+        // Validate backup structure
+        if (!backup.settings) {
+          throw new Error('Invalid backup file format');
+        }
+
+        // Confirm with user before importing
+        const result = await Swal.fire({
+          title: 'Import Settings?',
+          html: `
+            <p>This will replace your current settings with the backup from:</p>
+            <p><strong>${new Date(backup.exportDate).toLocaleString()}</strong></p>
+            <p>Extension Version: <strong>${backup.version}</strong></p>
+            <br>
+            <p style="color: #ff6b7a;">⚠️ Your current settings will be overwritten!</p>
+          `,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Yes, Import',
+          cancelButtonText: 'Cancel',
+          background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+          color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+        });
+
+        if (!result.isConfirmed) return;
+
+        // Import settings
+        await chrome.storage.local.set(backup.settings);
+
+        Swal.fire({
+          title: 'Import Successful!',
+          text: 'Your settings have been restored. The popup will now reload.',
+          icon: 'success',
+          background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+          color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+        }).then(() => {
+          location.reload();
+        });
+
+      } catch (error) {
+        console.error('Error importing settings:', error);
+        Swal.fire({
+          title: 'Import Failed!',
+          text: `There was an error importing your settings: ${error.message}. Please ensure it's a valid backup file.`,
+          icon: 'error',
+          background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+          color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+        });
+      } finally {
+        event.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  });
+}
+

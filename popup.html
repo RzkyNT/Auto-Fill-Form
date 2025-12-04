@@ -974,7 +974,16 @@
           </span>
         </summary>
         <div class="settings-accordion-content">
-          <h4 style="margin-top: 0;">Custom Profiles</h4>
+          <h4 style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;">Backup & Restore
+          </h4>
+          <p class="history-subhead">Export or import all your settings, API keys, and personalized data.</p>
+          <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button id="export-all-settings" class="button-primary" style="flex: 1;">Export All Settings</button>
+            <input type="file" id="import-settings-file-input" accept=".json" style="display: none;">
+            <button id="import-all-settings" class="button-primary" style="flex: 1;">Import Settings</button>
+          </div>
+          <h4 style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;">Custom Profiles
+          </h4>
           <p class="history-subhead">Create custom profiles to use the smart filler on any website.</p>
           <button id="manage-profiles" style="margin-bottom: 15px;">Manage Profiles</button>
 
