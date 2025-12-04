@@ -1,6 +1,6 @@
 {
   "name": "Smart Filler Simple",
-  "version": "2.0.3",
+  "version": "2.0.5",
   "manifest_version": 3,
   "description": "Auto-fill form fields with random data",
   "permissions": [
