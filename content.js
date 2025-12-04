@@ -93,10 +93,167 @@ function initContentScript() {
       // This now triggers the new guided mode. Pass existingProfile and hostname if available.
       startGuidedProfileCreation(request.existingProfile, request.hostname);
       sendResponse({ status: 'guided_selection_started' });
+    } else if (request.action === 'contextMenuSmartFill') {
+      handleContextMenuSmartFill();
+      sendResponse({ status: 'ok' });
+    } else if (request.action === 'contextMenuFakeFill') {
+      handleContextMenuFakeFill();
+      sendResponse({ status: 'ok' });
     }
     // Removed return true;
   });
 
+
+  // Context Menu Handlers
+  async function handleContextMenuSmartFill() {
+    if (!lastRightClickedElement) {
+      showContentToast("No field selected. Please right-click on an input field.", "error");
+      return;
+    }
+
+    const element = lastRightClickedElement;
+    const tagName = element.tagName.toLowerCase();
+    const inputType = element.type?.toLowerCase();
+
+    // Check if it's a valid input field
+    if (!['input', 'textarea', 'select'].includes(tagName)) {
+      showContentToast("Please right-click on an input field.", "error");
+      return;
+    }
+
+    // Get field metadata to understand what kind of data is needed
+    const metadata = getFieldMetadata(element);
+    const label = element.placeholder || element.name || element.id || "this field";
+
+    showContentToast("Asking AI to fill this field...", "info");
+
+    try {
+      // Build a smart prompt for AI
+      let prompt = `Fill this form field with appropriate data. Field context: ${metadata}. Label/Placeholder: ${label}.`;
+
+      if (tagName === 'select') {
+        const options = Array.from(element.options).map(opt => opt.text).filter(Boolean);
+        if (options.length > 0) {
+          prompt += `\nAvailable options: ${options.join(', ')}. Choose the most appropriate option.`;
+        }
+      }
+
+      prompt += "\n\nProvide ONLY the value to fill, without any explanation.";
+
+      const aiResponse = await getAiResponse(prompt);
+
+      if (tagName === 'select') {
+        // For select, find matching option
+        const options = Array.from(element.options);
+        const matchedOption = options.find(opt =>
+          opt.text.toLowerCase().includes(aiResponse.toLowerCase()) ||
+          aiResponse.toLowerCase().includes(opt.text.toLowerCase())
+        );
+
+        if (matchedOption) {
+          element.value = matchedOption.value;
+          showContentToast(`Filled with: ${matchedOption.text}`, "success");
+        } else {
+          showContentToast("Could not match AI response to available options", "error");
+        }
+      } else {
+        // For input/textarea
+        element.value = aiResponse;
+        showContentToast(`Filled with: ${aiResponse}`, "success");
+      }
+
+      // Trigger events
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+
+    } catch (error) {
+      showContentToast(`AI Error: ${error.message}`, "error");
+    }
+  }
+
+  async function handleContextMenuFakeFill() {
+    if (!lastRightClickedElement) {
+      showContentToast("No field selected. Please right-click on an input field.", "error");
+      return;
+    }
+
+    const element = lastRightClickedElement;
+    const tagName = element.tagName.toLowerCase();
+    const inputType = element.type?.toLowerCase();
+
+    // Check if it's a valid input field
+    if (!['input', 'textarea', 'select'].includes(tagName)) {
+      showContentToast("Please right-click on an input field.", "error");
+      return;
+    }
+
+    const metadata = getFieldMetadata(element);
+
+    try {
+      if (tagName === 'select') {
+        // For select, pick random option
+        if (element.options.length > 1) {
+          const randomIndex = FakeGen.randomNumber(1, element.options.length - 1);
+          element.selectedIndex = randomIndex;
+          showContentToast(`Selected: ${element.options[randomIndex].text}`, "success");
+        }
+      } else if (inputType === 'checkbox') {
+        element.checked = Math.random() > 0.5;
+        showContentToast(`Checkbox ${element.checked ? 'checked' : 'unchecked'}`, "success");
+      } else if (inputType === 'radio') {
+        const radios = document.getElementsByName(element.name);
+        if (radios.length > 0) {
+          FakeGen.pick(Array.from(radios)).checked = true;
+          showContentToast("Random radio option selected", "success");
+        }
+      } else {
+        // Generate fake data based on field metadata
+        let fakeValue = '';
+
+        if (metadata.includes('nik')) {
+          fakeValue = FakeGen.randomNIK();
+        } else if (metadata.includes('phone') || metadata.includes('telp')) {
+          fakeValue = FakeGen.randomPhoneNumber();
+        } else if (inputType === 'email' || metadata.includes('email')) {
+          fakeValue = FakeGen.randomEmail();
+        } else if (metadata.includes('nama') || metadata.includes('name')) {
+          fakeValue = FakeGen.randomName();
+        } else if (metadata.includes('address') || metadata.includes('alamat')) {
+          fakeValue = await FakeGen.randomAddress();
+        } else if (inputType === 'number') {
+          fakeValue = FakeGen.randomNumber().toString();
+        } else if (inputType === 'password') {
+          fakeValue = FakeGen.randomString(12);
+        } else if (tagName === 'textarea') {
+          fakeValue = await FakeGen.randomWords(20);
+        } else {
+          fakeValue = await FakeGen.randomWords(2);
+        }
+
+        element.value = fakeValue;
+        showContentToast(`Filled with fake data`, "success");
+      }
+
+      // Trigger events
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+
+    } catch (error) {
+      showContentToast(`Error: ${error.message}`, "error");
+    }
+  }
+
+  function getFieldMetadata(field) {
+    const parts = [
+      field.name,
+      field.id,
+      field.placeholder,
+      field.getAttribute('aria-label'),
+      field.className
+    ].filter(Boolean);
+
+    return parts.join(' ').toLowerCase();
+  }
 
 
   // Listen for manual trigger
@@ -111,6 +268,11 @@ function initContentScript() {
   let quizContentObserver = null;
   let debounceTimer = null;
   let isLightTheme = false; // Global variable to store theme state
+  let lastRightClickedElement = null;
+
+  document.addEventListener("contextmenu", (event) => {
+    lastRightClickedElement = event.target;
+  }, true);
 
   function debounce(func, delay) {
     clearTimeout(debounceTimer);

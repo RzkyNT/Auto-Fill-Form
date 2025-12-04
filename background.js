@@ -10,7 +10,7 @@ const LAST_ACTIVATION_RESPONSE_KEY = "lastActivationResponse";
 const LICENSE_CACHE_KEY = "licenseCache";
 const CACHE_DURATION_MS = 10 * 60 * 1000; // 1 hour
 
-chrome.runtime.onInstalled.addListener(function(details) {
+chrome.runtime.onInstalled.addListener(function (details) {
   // On first install, open a welcome page.
   if (details.reason === 'install') {
     chrome.tabs.create({ url: 'https://rizqiahansetiawan.ct.ws/ext/welcome.html' });
@@ -19,6 +19,28 @@ chrome.runtime.onInstalled.addListener(function(details) {
   // On install or update, run a check for a new version.
   // A small delay is used to ensure network is available.
   setTimeout(checkForUpdates, 2000);
+
+  // Create Context Menus
+  chrome.contextMenus.create({
+    id: "smart-fill-field",
+    title: "Smart Fill This Field",
+    contexts: ["editable"]
+  });
+
+  chrome.contextMenus.create({
+    id: "fake-fill-field",
+    title: "Generate Fake Data",
+    contexts: ["editable"]
+  });
+});
+
+// Handle Context Menu Clicks
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === "smart-fill-field") {
+    chrome.tabs.sendMessage(tab.id, { action: "contextMenuSmartFill" });
+  } else if (info.menuItemId === "fake-fill-field") {
+    chrome.tabs.sendMessage(tab.id, { action: "contextMenuFakeFill" });
+  }
 });
 
 // This script handles smart fill requests to Gemini or OpenAI depending on user settings.
@@ -26,7 +48,7 @@ console.log("Background service worker started.");
 
 // Function to generate a UUID (similar to v4)
 function generateUuid() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
   });
@@ -76,15 +98,15 @@ async function verifyBackendSignature(data, signature, sharedSecret) {
     );
 
     if (!/^[0-9a-fA-F]+$/.test(signature)) {
-        console.error("DEBUG BG: Signature is not a valid hex string. Received: " + signature);
-        return false;
+      console.error("DEBUG BG: Signature is not a valid hex string. Received: " + signature);
+      return false;
     }
 
     const hexToArrayBuffer = (hex) => {
-        const typedArray = new Uint8Array(hex.match(/[0-9a-f]{2}/gi).map(function (h) {
-            return parseInt(h, 16)
-        }));
-        return typedArray.buffer;
+      const typedArray = new Uint8Array(hex.match(/[0-9a-f]{2}/gi).map(function (h) {
+        return parseInt(h, 16)
+      }));
+      return typedArray.buffer;
     };
 
     const verified = await crypto.subtle.verify(
@@ -113,7 +135,7 @@ function shuffle(array) {
   }
 }
 
-function setApiKeyCooldown(apiKey, seconds = 3 ) {
+function setApiKeyCooldown(apiKey, seconds = 3) {
   chrome.storage.local.get({ apiKeys: [] }, ({ apiKeys }) => {
     const updated = apiKeys.map(api => {
       if (api.key === apiKey) {
@@ -211,7 +233,7 @@ async function callGemini(request, sendResponse) {
     sendResponse({ error: "No Gemini API keys configured." });
     return;
   }
-  
+
   console.log(`--- [DEBUG] callGemini: ${apiKeys.length} keys available. Shuffling...`);
   const shuffledKeys = [...apiKeys];
   shuffle(shuffledKeys);
@@ -310,12 +332,12 @@ async function callOpenAi(request, sendResponse, config) {
   console.log("--- [DEBUG] Constructed URL:", url);
 
   const body = {
-  model,
-  // hanya kirim temperature jika model mendukungnya
-  ...(request.chatContext && !model.includes("nano") && { temperature: 0.7 }),
-};
+    model,
+    // hanya kirim temperature jika model mendukungnya
+    ...(request.chatContext && !model.includes("nano") && { temperature: 0.7 }),
+  };
 
-  
+
   const isChatCompletionsEndpoint = endpoint.toLowerCase().includes("/chat/completions");
 
   if (isChatCompletionsEndpoint) {
@@ -342,8 +364,8 @@ async function callOpenAi(request, sendResponse, config) {
     }
   }
 
-    console.log("--- [DEBUG] OpenAI Request Body:", body); // Correctly placed debug log
-    try {
+  console.log("--- [DEBUG] OpenAI Request Body:", body); // Correctly placed debug log
+  try {
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -430,7 +452,7 @@ async function verifyActivationWithBackend() {
     if (response.ok && responseData.data?.status === 'success' && responseData.data?.isActive === true) {
       const licenseDetails = responseData.data.licenseDetails || 'Full';
       console.log(`BG: Verification successful. License: ${licenseDetails}`);
-      
+
       // Store successful verification in cache
       const newCache = {
         isActive: true,
@@ -443,7 +465,7 @@ async function verifyActivationWithBackend() {
     } else {
       const message = responseData.data?.message || 'Unknown status.';
       console.log(`BG: Verification failed or user is inactive. Reason: ${message}`);
-      
+
       // Also cache failed attempts to prevent spamming the server
       const newCache = {
         isActive: false,
@@ -489,23 +511,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }),
           redirect: 'follow'
         };
-        
+
         const response = await fetch(ACTIVATION_SERVER_URL, fetchOptions);
         const responseText = await response.text();
         let responseData = JSON.parse(responseText);
-        
+
         if (!responseData.data || !responseData.signature) {
-            console.error("BG: Respons yang salah dari server: Data atau tanda tangan hilang.");
-            sendResponse({ success: false, message: "Respons server salah." });
-            return;
+          console.error("BG: Respons yang salah dari server: Data atau tanda tangan hilang.");
+          sendResponse({ success: false, message: "Respons server salah." });
+          return;
         }
 
         const isSignatureValid = await verifyBackendSignature(responseData.data, responseData.signature, BACKEND_PUBLIC_KEY);
 
         if (!isSignatureValid) {
-            console.error("BG: Aktivasi gagal: Tanda tangan backend tidak valid.");
-            sendResponse({ success: false, message: "Invalid server response signature." });
-            return;
+          console.error("BG: Aktivasi gagal: Tanda tangan backend tidak valid.");
+          sendResponse({ success: false, message: "Invalid server response signature." });
+          return;
         }
 
         const successStatus = response.ok && responseData.data.status === 'success';
@@ -541,7 +563,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     return true;
   }
-  
+
   // --- Deactivation Workflow ---
   if (request.action === 'deactivateExtension') {
     (async () => {
@@ -574,8 +596,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       } finally {
         // Invalidate the cache on deactivation
         await chrome.storage.local.remove([
-          "activationKey", 
-          "licenseDetails", 
+          "activationKey",
+          "licenseDetails",
           LAST_ACTIVATION_RESPONSE_KEY,
           LICENSE_CACHE_KEY
         ]);
@@ -590,9 +612,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       const activationStatus = await verifyActivationWithBackend();
       if (!activationStatus.isActive) {
-          console.warn("AI API call blocked: Extension not activated.");
-          sendResponse({ error: "Extension not activated. Please activate to use Smart Fill." });
-          return;
+        console.warn("AI API call blocked: Extension not activated.");
+        sendResponse({ error: "Extension not activated. Please activate to use Smart Fill." });
+        return;
       }
       console.log("--- Background: Received request to call AI API for Smart Fill ---");
       const finalPrompt = request.prompt + smartFillInstruction;
@@ -601,14 +623,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     return true;
   }
-  
+
   if (request.action === "callChatApi") { // For Chat AI
     (async () => {
       const activationStatus = await verifyActivationWithBackend();
       if (!activationStatus.isActive) {
-          console.warn("Chat API call blocked: Extension not activated.");
-          sendResponse({ error: "Extension not activated. Please activate to use AI Chat." });
-          return;
+        console.warn("Chat API call blocked: Extension not activated.");
+        sendResponse({ error: "Extension not activated. Please activate to use AI Chat." });
+        return;
       }
       console.log("--- Background: Received request to call Chat API ---");
       const storage = await chrome.storage.local.get({ aiProvider: "gemini", openAiConfig: {}, apiKeys: [] });
@@ -631,10 +653,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       const activationStatus = await verifyActivationWithBackend();
       if (!activationStatus.isActive) {
-          console.warn("Profile creation blocked: Extension not activated.");
-          return;
+        console.warn("Profile creation blocked: Extension not activated.");
+        return;
       }
-      
+
       console.log('Background: Starting guided profile creation process.', request);
 
       chrome.scripting.executeScript( // Removed await here
@@ -681,10 +703,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       const activationStatus = await verifyActivationWithBackend();
       if (!activationStatus.isActive) {
-          console.warn("Profile editing blocked: Extension not activated.");
-          return;
+        console.warn("Profile editing blocked: Extension not activated.");
+        return;
       }
-      
+
       console.log('Background: Starting guided profile editing process.', request);
 
       chrome.scripting.executeScript(
@@ -751,7 +773,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 const UPDATE_CHECK_ALARM_NAME = 'update-check-alarm';
 // IMPORTANT: User must replace this URL with the raw URL to their version.json on GitHub
-const VERSION_URL = 'https://raw.githubusercontent.com/RzkyNT/Auto-Fill-Form/main/version.json'; 
+const VERSION_URL = 'https://raw.githubusercontent.com/RzkyNT/Auto-Fill-Form/main/version.json';
 const UPDATE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown for update checks triggered by activation
 
 async function compareVersions(versionA, versionB) {
@@ -777,7 +799,7 @@ async function checkForUpdates() {
   }
 
   console.log('Checking for extension updates...');
-  
+
   if (VERSION_URL.includes('USERNAME/REPONAME')) { // This warning is now handled by the user's setup instructions.
     // console.warn('Update checker: Please replace the placeholder VERSION_URL in background.js');
     // return;
@@ -833,7 +855,7 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
 
 // Schedule the update check
 chrome.alarms.create(UPDATE_CHECK_ALARM_NAME, {
-  delayInMinutes: 1, 
+  delayInMinutes: 1,
   periodInMinutes: 1440
 });
 
