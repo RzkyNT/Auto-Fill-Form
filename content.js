@@ -1,3 +1,39 @@
+// Helper function to render chat messages, including Markdown and LaTeX
+function renderChatWithLatex(text, bubbleElement) {
+  if (!text || typeof text !== 'string') {
+    bubbleElement.textContent = text || '';
+    return;
+  }
+
+  // --- Basic Markdown Processing ---
+  let processedHtml = text;
+
+  // 1. Handle ### for H3 headings (block level)
+  // Match ### at the beginning of a line (gim: global, ignore case, multiline)
+  processedHtml = processedHtml.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+  
+  // 2. Handle **bold** for bold text (inline)
+  // Non-greedy match for content between **
+  processedHtml = processedHtml.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  
+  // 3. Replace newlines with <br> for display
+  processedHtml = processedHtml.replace(/\n/g, '<br>');
+
+  // --- LaTeX Rendering Placeholder ---
+  // If a LaTeX rendering library like KaTeX were available,
+  // its rendering logic would be integrated here.
+  // For example:
+  // try {
+  //   processedHtml = katex.renderToString(processedHtml, { throwOnError: false });
+  // } catch (e) {
+  //   console.warn("KaTeX rendering failed:", e);
+  //   // Fallback: Keep the text as is or display an error
+  // }
+  // For now, we will display it as plain text or simple markup.
+
+  bubbleElement.innerHTML = processedHtml;
+}
+
 if (window.hasRunContentScript) {
   console.warn("[Content.js] Content script already run. Skipping re-initialization.");
 } else {
@@ -37,6 +73,69 @@ function updateTriggerColorVariable(variableName, value) {
     }
   }
 }
+// Helper function to render chat messages, including Markdown and LaTeX
+function renderChatWithLatex(text, bubbleElement) {
+  if (!text || typeof text !== 'string') {
+    bubbleElement.textContent = text || '';
+    return;
+  }
+
+  // --- Basic Markdown Processing ---
+  let processedHtml = text;
+
+  // 1. Handle ### for H3 headings (block level)
+  // Match ### at the beginning of a line (gim: global, ignore case, multiline)
+  processedHtml = processedHtml.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+  
+  // 2. Handle **bold** for bold text (inline)
+  // Non-greedy match for content between **
+  processedHtml = processedHtml.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  
+  // 3. Replace newlines with <br> for display
+  processedHtml = processedHtml.replace(/\n/g, '<br>');
+
+  // --- LaTeX Rendering Placeholder ---
+  // If a LaTeX rendering library like KaTeX were available,
+  // its rendering logic would be integrated here.
+  // For example:
+  // try {
+  //   processedHtml = katex.renderToString(processedHtml, { throwOnError: false });
+  // } catch (e) {
+  //   console.warn("KaTeX rendering failed:", e);
+  //   // Fallback: Keep the text as is or display an error
+  // }
+  // For now, we will display it as plain text or simple markup.
+
+  bubbleElement.innerHTML = processedHtml;
+}
+
+// Helper function to update trigger colors (real-time from popup)
+function updateTriggerColorVariable(variableName, value) {
+  // ... (rest of the function) ...
+}
+  console.log(`[Content.js] updateTriggerColorVariable called. Variable: ${variableName}, Value: ${value}`); // Debug log
+
+  if (variableName === '--trigger-button-background-color') {
+    const triggerButton = document.getElementById('smart-fill-trigger-button');
+    if (triggerButton) {
+      console.log(`[Content.js] Before update, Trigger Button Background: ${triggerButton.style.background}`); // Debug log
+      triggerButton.style.background = value;
+      console.log(`[Content.js] After update, Trigger Button Background: ${triggerButton.style.background}`); // Debug log
+    } else {
+      console.warn("[Content.js] Trigger button not found for background color update."); // Debug log
+    }
+  } else if (variableName === '--trigger-icon-span-background-color') {
+    const iconSpans = document.querySelectorAll('#smart-fill-trigger-button .smart-fill-icon span');
+    if (iconSpans.length > 0) {
+      iconSpans.forEach((span, index) => {
+        console.log(`[Content.js] Before update, Icon Span ${index} Background: ${span.style.background}`); // Debug log
+        span.style.background = value;
+        console.log(`[Content.js] After update, Icon Span ${index} Background: ${span.style.background}`); // Debug log
+      });
+    } else {
+      console.warn("[Content.js] Icon spans not found for background color update."); // Debug log
+    }
+  }
 
 function updateTriggerButtonOpacityVariable(value) {
   if (value === undefined || value === null) return;
@@ -2020,19 +2119,18 @@ Response (number only or "NONE"):`;
       bubble.className = `chat-message-bubble ${message.sender}-message`;
       if (message.isError) bubble.classList.add('error');
 
-      const messageContent = message.text;
+      const messageText = message.text;
 
       if (message.sender === 'bot') {
-        // Use the new safe renderer for bot messages
-        renderChatWithLatex(messageContent, bubble);
-
+        // Use the custom renderer for bot messages
+        renderChatWithLatex(message.text, bubble);
         const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M160-400v400h480v-400H160Zm80 80h320v240H240v-240Zm-80-480v-80h480v80H160Zm560 560v-560h80v560h-80Zm-400-400v-80h480v80H320Zm80-80v-80h480v80H400Zm80-80v-80h480v80H480Z"/></svg>`;
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-message-button';
         copyButton.innerHTML = copyIcon;
         copyButton.title = 'Copy to clipboard';
         copyButton.onclick = () => {
-          navigator.clipboard.writeText(message.text)
+          navigator.clipboard.writeText(message.text) // Use raw message.text for copying
             .then(() => {
               showContentToast('Copied to clipboard!', 'success');
             })
@@ -2044,7 +2142,7 @@ Response (number only or "NONE"):`;
         bubble.appendChild(copyButton);
 
       } else {
-        bubble.textContent = messageContent;
+        bubble.textContent = messageText; // For user messages, use textContent to avoid HTML injection
       }
 
       messagesContainer.appendChild(bubble);

@@ -801,38 +801,6 @@
         <button id="personal-fill">Fill with My Data</button>
         <button id="smart-fill">Smart Fill with AI</button>
       </div>
-
-      <!-- Collapsible Sections -->
-      <details class="settings-accordion" id="keyboard-shortcuts-accordion">
-        <summary class="settings-accordion-header">
-          <span class="accordion-title">
-            <svg class="accordion-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect>
-              <path d="M6 8h.001"></path>
-              <path d="M10 8h.001"></path>
-              <path d="M14 8h.001"></path>
-              <path d="M18 8h.001"></path>
-              <path d="M6 12h.001"></path>
-              <path d="M10 12h.001"></path>
-              <path d="M14 12h.001"></path>
-              <path d="M18 12h.001"></path>
-              <path d="M7 16h10"></path>
-            </svg>
-            Keyboard Shortcuts
-          </span>
-        </summary>
-        <div class="settings-accordion-content">
-          <p class="history-subhead">Click an input, then <b>hold down</b> the keys at the same time (e.g. Hold Ctrl, then press S). At least one modifier (Ctrl, Alt, Shift) is required for letter or number keys.</p>
-          <div id="shortcuts-container">
-            <!-- Shortcut rows will be dynamically inserted here -->
-          </div>
-          <div style="display: flex; gap: 10px; margin-top: 15px;">
-            <button id="save-shortcuts" class="save-button" style="flex: 1;">Save Shortcuts</button>
-            <button id="reset-shortcuts" class="history-clear" style="flex: 1;">Reset to Defaults</button>
-          </div>
-        </div>
-      </details>
       <details class="settings-accordion">
         <summary class="settings-accordion-header">
           <span class="accordion-title">
@@ -958,7 +926,37 @@
           <p class="history-subhead" style="margin-top: -10px;">Logs detailed shortcut information to the browser's developer console (on the webpage, not this popup).</p>
         </div>
       </details>
-
+      <!-- Collapsible Sections -->
+      <details class="settings-accordion" id="keyboard-shortcuts-accordion">
+        <summary class="settings-accordion-header">
+          <span class="accordion-title">
+            <svg class="accordion-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect>
+              <path d="M6 8h.001"></path>
+              <path d="M10 8h.001"></path>
+              <path d="M14 8h.001"></path>
+              <path d="M18 8h.001"></path>
+              <path d="M6 12h.001"></path>
+              <path d="M10 12h.001"></path>
+              <path d="M14 12h.001"></path>
+              <path d="M18 12h.001"></path>
+              <path d="M7 16h10"></path>
+            </svg>
+            Keyboard Shortcuts
+          </span>
+        </summary>
+        <div class="settings-accordion-content">
+          <p class="history-subhead">Click an input, then <b>hold down</b> the keys at the same time (e.g. Hold Ctrl, then press S). At least one modifier (Ctrl, Alt, Shift) is required for letter or number keys.</p>
+          <div id="shortcuts-container">
+            <!-- Shortcut rows will be dynamically inserted here -->
+          </div>
+          <div style="display: flex; gap: 10px; margin-top: 15px;">
+            <button id="save-shortcuts" class="save-button" style="flex: 1;">Save Shortcuts</button>
+            <button id="reset-shortcuts" class="history-clear" style="flex: 1;">Reset to Defaults</button>
+          </div>
+        </div>
+      </details>
       <details class="settings-accordion">
         <summary class="settings-accordion-header">
           <span class="accordion-title">
