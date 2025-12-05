@@ -1415,71 +1415,129 @@ Response (number only or "NONE"):`;
   }
 
   function setupKeyboardShortcuts() {
+    // Define default shortcuts (must match popup.js)
+    const defaultShortcuts = {
+      runAI: { ctrlKey: true, shiftKey: true, altKey: false, key: 'Z' },
+      stopAI: { ctrlKey: true, shiftKey: true, altKey: false, key: 'X' },
+      toggleMenu: { ctrlKey: false, shiftKey: true, altKey: true, key: 'M' },
+      openChat: { ctrlKey: false, shiftKey: true, altKey: true, key: 'C' },
+      toggleFullscreen: { ctrlKey: false, shiftKey: true, altKey: true, key: 'F' },
+      resetSession: { ctrlKey: false, shiftKey: true, altKey: true, key: 'R' },
+      addProfile: { ctrlKey: false, shiftKey: true, altKey: true, key: 'P' },
+      toggleOverlay: { ctrlKey: false, shiftKey: true, altKey: true, key: 'O' }
+    };
+    let activeShortcuts = {}; // Will hold either default or custom shortcuts
+    let debugMode = false; // Debugging flag
+
+    // Function to load settings from storage
+    async function loadSettings() {
+        const result = await chrome.storage.local.get({ shortcuts: defaultShortcuts, debugMode: false });
+        activeShortcuts = result.shortcuts;
+        debugMode = result.debugMode;
+        if (debugMode) {
+          console.log("[Smart Fill] Debug mode enabled. Active Shortcuts:", activeShortcuts);
+        }
+    }
+    loadSettings(); // Initial load
+
+    // Listen for changes in storage (e.g., from popup)
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace === 'local') {
+            if (changes.shortcuts) {
+                activeShortcuts = changes.shortcuts.newValue;
+                if (debugMode) {
+                  console.log("[Smart Fill] Shortcuts updated from storage:", activeShortcuts);
+                }
+            }
+            if (changes.debugMode) {
+                debugMode = changes.debugMode.newValue;
+                console.log(`[Smart Fill] Shortcut debugging ${debugMode ? 'enabled' : 'disabled'}.`);
+            }
+        }
+    });
+
     document.addEventListener('keydown', (e) => {
-      // Ctrl+Shift+Z: Run AI
-      if (e.ctrlKey && e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
-        e.preventDefault();
-        const runAiButton = document.getElementById('run-ai-button');
-        // Check if already running
-        if (runAiButton && runAiButton.classList.contains('processing')) {
-          showContentToast("Smart Fill is already running. Use Ctrl+Shift+X to stop.", "info");
-        } else {
-          // Start Smart Fill
-          toggleProgressOverlay(false);
-          doSmartFill();
-        }
+      // Don't log if modifier key is pressed alone (e.g., just holding Ctrl)
+      if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
         return;
       }
+      
+      if (debugMode) {
+          console.groupCollapsed(`[Smart Fill Debug] Keydown: ${e.key}`);
+          console.log('Event properties:', {
+            key: e.key,
+            code: e.code,
+            ctrlKey: e.ctrlKey,
+            altKey: e.altKey,
+            shiftKey: e.shiftKey,
+            metaKey: e.metaKey
+          });
+          console.log('Active Shortcuts being matched:', activeShortcuts);
+          console.groupEnd();
+      }
 
-      // Ctrl+Shift+X: Stop AI
-      if (e.ctrlKey && e.shiftKey && (e.key === 'x' || e.key === 'X')) {
-        e.preventDefault();
-        if (smartFillSession) {
-          smartFillSession.stopRequested = true;
-          updateAiButtonState(false);
-          toggleProgressOverlay(false);
-          showContentToast("Smart Fill stopped.", "info");
-          if (smartFillSession.stopSignalResolver) {
-            smartFillSession.stopSignalResolver();
-            smartFillSession.stopSignalResolver = null;
+      const isMatchingShortcut = (shortcut) => {
+          // If the shortcut is null/undefined (e.g., user cleared it), it won't match
+          if (!shortcut || !shortcut.key) return false;
+
+          return e.ctrlKey === shortcut.ctrlKey &&
+                 e.shiftKey === shortcut.shiftKey &&
+                 e.altKey === shortcut.altKey &&
+                 // Match key against stored key (which is uppercase)
+                 e.key.toUpperCase() === shortcut.key; 
+      };
+
+      let matched = false;
+      for (const command in activeShortcuts) {
+          if (isMatchingShortcut(activeShortcuts[command])) {
+              if (debugMode) {
+                console.log(`%c[Smart Fill Debug] MATCH! Triggering command: ${command}`, 'color: #25D366; font-weight: bold;');
+              }
+              e.preventDefault();
+              matched = true; // Mark as matched to skip other checks and preventDefault
+              // Execute the command's logic
+              if (command === 'runAI') {
+                const runAiButton = document.getElementById('run-ai-button');
+                if (runAiButton && runAiButton.classList.contains('processing')) {
+                  showContentToast("Smart Fill is already running. Use Ctrl+Shift+X to stop.", "info");
+                } else {
+                  toggleProgressOverlay(false);
+                  doSmartFill();
+                }
+              } else if (command === 'stopAI') {
+                if (smartFillSession) {
+                  smartFillSession.stopRequested = true;
+                  updateAiButtonState(false);
+                  toggleProgressOverlay(false);
+                  showContentToast("Smart Fill stopped.", "info");
+                  if (smartFillSession.stopSignalResolver) {
+                    smartFillSession.stopSignalResolver();
+                    smartFillSession.stopSignalResolver = null;
+                  }
+                }
+              } else if (command === 'toggleMenu') {
+                const container = document.getElementById('smart-fill-trigger-container');
+                if (container) container.classList.toggle('active');
+              } else if (command === 'openChat') {
+                const chatBtn = document.getElementById('chat-overlay-button');
+                if (chatBtn) chatBtn.click();
+              } else if (command === 'toggleFullscreen') {
+                const fsBtn = document.getElementById('fullscreen-button');
+                if (fsBtn) fsBtn.click();
+              } else if (command === 'resetSession') {
+                const resetBtn = document.getElementById('reset-session-button');
+                if (resetBtn) resetBtn.click();
+              } else if (command === 'addProfile') {
+                const profileBtn = document.getElementById('add-profile-button');
+                if (profileBtn) profileBtn.click();
+              } else if (command === 'toggleOverlay') {
+                toggleProgressOverlay();
+              }
+              break; // Stop after first match
           }
-        }
-        return;
       }
-
-      // Alt+Shift Shortcuts for other actions
-      if (e.altKey && e.shiftKey) {
-        switch (e.key.toLowerCase()) {
-          case 'm': // Toggle Menu
-            e.preventDefault();
-            const container = document.getElementById('smart-fill-trigger-container');
-            if (container) container.classList.toggle('active');
-            break;
-          case 'c': // Chat
-            e.preventDefault();
-            const chatBtn = document.getElementById('chat-overlay-button');
-            if (chatBtn) chatBtn.click();
-            break;
-          case 'f': // Fullscreen
-            e.preventDefault();
-            const fsBtn = document.getElementById('fullscreen-button');
-            if (fsBtn) fsBtn.click();
-            break;
-          case 'r': // Reset
-            e.preventDefault();
-            const resetBtn = document.getElementById('reset-session-button');
-            if (resetBtn) resetBtn.click();
-            break;
-          case 'p': // Add Profile
-            e.preventDefault();
-            const profileBtn = document.getElementById('add-profile-button');
-            if (profileBtn) profileBtn.click();
-            break;
-          case 'o': // Toggle Progress Overlay
-            e.preventDefault();
-            toggleProgressOverlay();
-            break;
-        }
+      if (debugMode && !matched) {
+        console.log('[Smart Fill Debug] No shortcut matched for this keydown event.');
       }
     });
   }

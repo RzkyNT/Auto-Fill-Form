@@ -705,6 +705,51 @@
       background: rgba(255, 107, 122, 0.15);
       border-radius: 50%;
     }
+    #update-banner {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    /* Styles for Shortcut Editor */
+    .shortcut-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 4px; /* Reduced padding */
+      border-bottom: 1px solid var(--color-border);
+    }
+    #shortcuts-container {
+      margin-top: 10px;
+      border-radius: 12px;
+      border: 1px solid var(--color-border);
+      padding: 0 12px;
+      background: var(--color-surface-alt);
+    }
+    #shortcuts-container .shortcut-row:last-child {
+      border-bottom: none;
+    }
+    .shortcut-row label {
+      font-weight: 500;
+      font-size: 0.9em;
+      color: var(--color-text);
+    }
+    .shortcut-input {
+      background: var(--color-surface);
+      border: 1px solid var(--color-input-border);
+      border-radius: 8px;
+      color: var(--color-muted);
+      padding: 8px 12px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      text-align: center;
+      width: 180px;
+      cursor: text;
+      transition: all 0.2s ease;
+    }
+    .shortcut-input:focus, .shortcut-input.recording {
+      color: var(--color-text);
+      border-color: var(--color-accent);
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.25);
+    }
   </style>
 </head>
 
@@ -758,7 +803,7 @@
       </div>
 
       <!-- Collapsible Sections -->
-      <details class="settings-accordion">
+      <details class="settings-accordion" id="keyboard-shortcuts-accordion">
         <summary class="settings-accordion-header">
           <span class="accordion-title">
             <svg class="accordion-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
@@ -778,49 +823,13 @@
           </span>
         </summary>
         <div class="settings-accordion-content">
-          <div class="history-table-container" style="max-height: none;">
-            <table style="width: 100%;">
-              <thead>
-                <tr>
-                  <th style="background: var(--color-surface);">Action</th>
-                  <th style="background: var(--color-surface);">Shortcut</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Run Smart Fill</td>
-                  <td><span class="developer-tag">Ctrl + Shift + Z</span></td>
-                </tr>
-                <tr>
-                  <td>Stop Smart Fill</td>
-                  <td><span class="developer-tag">Ctrl + Shift + X</span></td>
-                </tr>
-                <tr>
-                  <td>Toggle Menu</td>
-                  <td><span class="developer-tag">Alt + Shift + M</span></td>
-                </tr>
-                <tr>
-                  <td>Open Chat</td>
-                  <td><span class="developer-tag">Alt + Shift + C</span></td>
-                </tr>
-                <tr>
-                  <td>Toggle Fullscreen</td>
-                  <td><span class="developer-tag">Alt + Shift + F</span></td>
-                </tr>
-                <tr>
-                  <td>Reset Session</td>
-                  <td><span class="developer-tag">Alt + Shift + R</span></td>
-                </tr>
-                <tr>
-                  <td>Add Profile</td>
-                  <td><span class="developer-tag">Alt + Shift + P</span></td>
-                </tr>
-                <tr>
-                  <td>Toggle Overlay</td>
-                  <td><span class="developer-tag">Alt + Shift + O</span></td>
-                </tr>
-              </tbody>
-            </table>
+          <p class="history-subhead">Click an input, then <b>hold down</b> the keys at the same time (e.g. Hold Ctrl, then press S). At least one modifier (Ctrl, Alt, Shift) is required for letter or number keys.</p>
+          <div id="shortcuts-container">
+            <!-- Shortcut rows will be dynamically inserted here -->
+          </div>
+          <div style="display: flex; gap: 10px; margin-top: 15px;">
+            <button id="save-shortcuts" class="save-button" style="flex: 1;">Save Shortcuts</button>
+            <button id="reset-shortcuts" class="history-clear" style="flex: 1;">Reset to Defaults</button>
           </div>
         </div>
       </details>
@@ -838,7 +847,7 @@
         <div class="settings-accordion-content">
           <p class="history-subhead">Define custom data fields and the keywords to trigger them.</p>
 
-          <div id="personal-data-container">
+          <div style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;" id="personal-data-container">
             <!-- Data fields will be dynamically inserted here by popup.js -->
           </div>
 
@@ -846,7 +855,7 @@
             style="margin-top: 15px; width: auto; padding: 8px 15px;">+ Add New Field</button>
           <button id="save-personal-data" class="save-button">Save All Personal Data</button>
 
-          <h4 style="margin-top: 20px;">Personal Fill Mode</h4>
+          <h4 style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;">Personal Fill Mode</h4>
           <p class="history-subhead">Choose how "Fill with My Data" matches fields with your personal data.</p>
           <div class="provider-card" style="margin-top: 8px; padding-top: 5px; padding-bottom: 5px;">
             <label>
@@ -884,7 +893,7 @@
             Auto-run on page load
           </label>
 
-          <h4 style="margin-top: 15px;">Fill Mode</h4>
+          <h4 style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;">Fill Mode</h4>
           <div class="provider-card" style="margin-top:0; padding-top: 5px; padding-bottom: 5px;">
             <label>
               <input type="radio" name="fill-mode" value="direct" /> Agent Mode (Isi Langsung)
@@ -906,7 +915,7 @@
             Show Floating Menu
           </label>
 
-          <h4 style="margin-top: 15px;">Trigger Button Style</h4>
+          <h4 style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;">Trigger Button Style</h4>
           <div class="provider-card" style="margin-top:0; padding-top: 5px; padding-bottom: 5px;">
             <label>
                 <input type="radio" name="trigger-style" value="default" /> Default Icon
@@ -917,15 +926,6 @@
                 <input type="radio" name="trigger-style" value="assistive" /> Assistive Touch Style
             </label>
           </div>
-
-          <label for="floating-menu-size" style="margin-top: 10px;">Floating Menu Size</label>
-          <input type="range" id="floating-menu-size" min="40" max="100" value="64" style="width: 100%;" />
-          <span id="floating-menu-size-value"
-            style="display: block; text-align: right; font-size: 0.85em; color: var(--color-muted);">64px</span>
-
-          <button id="reset-floating-position" class="button-primary" style="margin-top: 10px;">
-            Reset Floating Menu Position
-          </button>
           <label for="trigger-button-bg-color" style="margin-top: 10px;">Trigger Button Background Color</label>
           <div style="display: flex; align-items: center; gap: 8px;">
             <input type="text" id="trigger-button-bg-color" class="api-key-input" data-coloris value=""
@@ -938,9 +938,24 @@
           </div>
           <label for="overlay-opacity" style="margin-top: 10px;">Trigger Button Opacity</label>
           <input type="range" id="overlay-opacity" min="0" max="100" value="70" style="width: 100%;" />
-          <span id="trigger-button-opacity-value"
-            style="display: block; text-align: right; font-size: 0.85em; color: var(--color-muted);">70%</span>
+          <label for="floating-menu-size" style="margin-top: 10px;">Floating Menu Size</label>
+          <input type="range" id="floating-menu-size" min="40" max="100" value="64" style="width: 100%;" />
+          <span id="floating-menu-size-value"
+            style="display: block; text-align: right; font-size: 0.85em; color: var(--color-muted);">64px</span>
+
+          <button id="reset-floating-position" class="button-primary" style="margin-top: 10px;">
+            Reset Floating Menu Position
+          </button>
+          <span id="trigger-button-opacity-value" style="display: block; text-align: right; font-size: 0.85em; color: var(--color-muted);">70%</span>
           <button id="save-ui-settings" class="save-button">Save UI Settings</button>
+
+          <h4 style="margin-top: 20px; border-top: 1px solid var(--color-border); padding-top: 15px;">Developer</h4>
+          <label class="custom-checkbox-container" style="margin-bottom: 15px;">
+            <input type="checkbox" id="debug-mode" />
+            <span class="checkmark"></span>
+            Enable Shortcut Debugging
+          </label>
+          <p class="history-subhead" style="margin-top: -10px;">Logs detailed shortcut information to the browser's developer console (on the webpage, not this popup).</p>
         </div>
       </details>
 

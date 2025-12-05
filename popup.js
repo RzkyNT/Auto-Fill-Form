@@ -40,6 +40,8 @@ const htmlRoot = document.documentElement;
 const manageProfilesButton = document.getElementById("manage-profiles");
 const viewHistoryButton = document.getElementById("view-history");
 const resetSessionButton = document.getElementById("reset-session");
+const debugModeCheckbox = document.getElementById("debug-mode"); // NEW
+
 
 // --- Activation Elements ---
 const activationKeyInput = document.getElementById("activation-key-input");
@@ -107,7 +109,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Load other non-activation-related settings from storage
-  chrome.storage.local.get(["autoRun", "fillMode", "personalizedData", "personalFillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity", "showFloatingMenu", "floatingMenuSize", "triggerStyle"], (result) => {
+  chrome.storage.local.get(["autoRun", "fillMode", "personalizedData", "personalFillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity", "showFloatingMenu", "floatingMenuSize", "triggerStyle", "debugMode"], (result) => {
     autoRunCheckbox.checked = !!result.autoRun;
     showFloatingMenuCheckbox.checked = result.showFloatingMenu !== false; // Default to true
 
@@ -130,6 +132,9 @@ document.addEventListener("DOMContentLoaded", () => {
         radio.checked = radio.value === triggerStyle;
     });
     updateUiForTriggerStyle(triggerStyle);
+    
+    // Set debug mode checkbox state
+    debugModeCheckbox.checked = !!result.debugMode;
 
     console.log("[Popup.js] Loaded settings from storage:", result);
 
@@ -210,6 +215,7 @@ document.addEventListener("DOMContentLoaded", () => {
     Coloris.set('themeMode', darkModeToggle.checked ? 'dark' : 'light');
 
     setupAccordionBehavior();
+    setupShortcutEditor();
   });
 });
 
@@ -1264,6 +1270,203 @@ if (copySettingsClipboardButton) {
     }
   });
 }
+
+// ============================================
+// KEYBOARD SHORTCUT EDITOR
+// ============================================
+function setupShortcutEditor() {
+  const shortcutsContainer = document.getElementById('shortcuts-container');
+  const saveButton = document.getElementById('save-shortcuts');
+  const resetButton = document.getElementById('reset-shortcuts');
+  const accordion = document.getElementById('keyboard-shortcuts-accordion');
+
+  if (!shortcutsContainer || !saveButton || !resetButton || !accordion) return;
+
+  const commandLabels = {
+    runAI: 'Run Smart Fill',
+    stopAI: 'Stop Smart Fill',
+    toggleMenu: 'Toggle Menu',
+    openChat: 'Open Chat',
+    toggleFullscreen: 'Toggle Fullscreen',
+    resetSession: 'Reset Session',
+    addProfile: 'Add Profile',
+    toggleOverlay: 'Toggle Overlay'
+  };
+
+  const defaultShortcuts = {
+      runAI: { combo: 'Ctrl+Shift+Z', ctrlKey: true, shiftKey: true, altKey: false, key: 'Z' },
+      stopAI: { combo: 'Ctrl+Shift+X', ctrlKey: true, shiftKey: true, altKey: false, key: 'X' },
+      toggleMenu: { combo: 'Alt+Shift+M', ctrlKey: false, shiftKey: true, altKey: true, key: 'M' },
+      openChat: { combo: 'Alt+Shift+C', ctrlKey: false, shiftKey: true, altKey: true, key: 'C' },
+      toggleFullscreen: { combo: 'Alt+Shift+F', ctrlKey: false, shiftKey: true, altKey: true, key: 'F' },
+      resetSession: { combo: 'Alt+Shift+R', ctrlKey: false, shiftKey: true, altKey: true, key: 'R' },
+      addProfile: { combo: 'Alt+Shift+P', ctrlKey: false, shiftKey: true, altKey: true, key: 'P' },
+      toggleOverlay: { combo: 'Alt+Shift+O', ctrlKey: false, shiftKey: true, altKey: true, key: 'O' }
+  };
+
+  let currentShortcuts = {};
+
+  function loadAndRender() {
+    chrome.storage.local.get({ shortcuts: JSON.parse(JSON.stringify(defaultShortcuts)) }, (result) => {
+      currentShortcuts = result.shortcuts;
+      renderShortcuts();
+    });
+  }
+  
+  function renderShortcuts() {
+    shortcutsContainer.innerHTML = '';
+    for (const command in commandLabels) {
+      const row = document.createElement('div');
+      row.className = 'shortcut-row';
+
+      const label = document.createElement('label');
+      label.textContent = commandLabels[command];
+      label.htmlFor = `shortcut-${command}`;
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'shortcut-input';
+      input.id = `shortcut-${command}`;
+      input.dataset.command = command;
+      input.value = currentShortcuts[command]?.combo || 'Not set';
+      input.readOnly = true;
+
+      row.appendChild(label);
+      row.appendChild(input);
+      shortcutsContainer.appendChild(row);
+    }
+  }
+
+  // Event listeners
+  shortcutsContainer.addEventListener('focusin', (e) => {
+    if (e.target.classList.contains('shortcut-input')) {
+      const input = e.target;
+      
+      // If another input is recording, blur it first to finalize its state.
+      const anotherRecording = shortcutsContainer.querySelector('.shortcut-input.recording');
+      if (anotherRecording && anotherRecording !== input) {
+        anotherRecording.blur();
+      }
+
+      input.dataset.originalValue = input.value;
+      input.value = 'Recording...';
+      input.classList.add('recording');
+    }
+  });
+
+  shortcutsContainer.addEventListener('focusout', (e) => {
+    if (e.target.classList.contains('shortcut-input')) {
+      const input = e.target;
+      // If value is still "Recording...", it means no valid key was pressed, so revert.
+      if (input.value === 'Recording...') {
+         input.value = input.dataset.originalValue;
+      }
+      input.classList.remove('recording');
+    }
+  });
+
+  shortcutsContainer.addEventListener('keydown', (e) => {
+    if (e.target.classList.contains('shortcut-input') && e.target.classList.contains('recording')) {
+      e.preventDefault();
+
+      console.log('[Shortcut Editor] Keydown event:', {
+        key: e.key,
+        code: e.code,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        shiftKey: e.shiftKey,
+        metaKey: e.metaKey // For Command key on Mac
+      });
+
+      if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
+        console.log('[Shortcut Editor] Modifier key pressed alone. Waiting for main key.');
+        return;
+      }
+
+      const input = e.target;
+      const command = input.dataset.command;
+
+      const key = e.key.toUpperCase();
+      const isFunctionKey = /^F(1[0-2]|[1-9])$/.test(key);
+      const isAlphanumeric = /^[A-Z0-9]$/.test(key);
+      
+      const hasModifier = e.ctrlKey || e.altKey || e.shiftKey;
+
+      const isValidCombo = isFunctionKey || (isAlphanumeric && hasModifier);
+
+      console.log(`[Shortcut Editor] Validation: Key=${key}, isFunctionKey=${isFunctionKey}, isAlphanumeric=${isAlphanumeric}, hasModifier=${hasModifier}, isValidCombo=${isValidCombo}`);
+
+      if (!isValidCombo) {
+          console.log('[Shortcut Editor] Combo rejected: Invalid combination.');
+          const originalValue = input.dataset.originalValue;
+          input.value = "Invalid Combo";
+          setTimeout(() => { 
+            input.value = originalValue;
+            input.blur();
+          }, 800);
+          return;
+      }
+      
+      let combo = [];
+      if (e.ctrlKey) combo.push('Ctrl');
+      if (e.altKey) combo.push('Alt');
+      if (e.shiftKey) combo.push('Shift');
+      
+      combo.push(e.key.length > 1 ? e.key : e.key.toUpperCase());
+      
+      const comboString = combo.join('+');
+      input.value = comboString;
+
+      currentShortcuts[command] = {
+        combo: comboString,
+        ctrlKey: e.ctrlKey,
+        shiftKey: e.shiftKey,
+        altKey: e.altKey,
+        key: e.key.toUpperCase()
+      };
+      
+      console.log('[Shortcut Editor] Combo accepted and saved:', currentShortcuts[command]);
+      input.blur(); 
+    }
+  });
+  
+  saveButton.addEventListener('click', () => {
+    chrome.storage.local.set({ shortcuts: currentShortcuts }, () => {
+      const originalText = saveButton.textContent;
+      saveButton.textContent = "Saved!";
+      saveButton.style.background = '#25D366';
+      setTimeout(() => { 
+        saveButton.textContent = originalText;
+        saveButton.style.background = '';
+      }, 1500);
+    });
+  });
+
+  resetButton.addEventListener('click', () => {
+    currentShortcuts = JSON.parse(JSON.stringify(defaultShortcuts)); // Deep copy
+    renderShortcuts(); // Re-render the UI with default values
+    // Also save them back to storage
+    chrome.storage.local.set({ shortcuts: currentShortcuts }, () => {
+       Swal.fire({
+            title: 'Shortcuts Reset',
+            text: 'Shortcuts have been reset to their default values.',
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false,
+            background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+            color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+        });
+    });
+  });
+  
+  // Only load and render if the accordion is opened, to save resources
+  accordion.addEventListener('toggle', () => {
+    if (accordion.open) {
+      loadAndRender();
+    }
+  }, { once: true });
+}
+
 
 // ============================================
 // COPY TO CLIPBOARD - PROFILES
