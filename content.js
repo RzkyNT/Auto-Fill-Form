@@ -109,34 +109,6 @@ function renderChatWithLatex(text, bubbleElement) {
   bubbleElement.innerHTML = processedHtml;
 }
 
-// Helper function to update trigger colors (real-time from popup)
-function updateTriggerColorVariable(variableName, value) {
-  // ... (rest of the function) ...
-}
-  console.log(`[Content.js] updateTriggerColorVariable called. Variable: ${variableName}, Value: ${value}`); // Debug log
-
-  if (variableName === '--trigger-button-background-color') {
-    const triggerButton = document.getElementById('smart-fill-trigger-button');
-    if (triggerButton) {
-      console.log(`[Content.js] Before update, Trigger Button Background: ${triggerButton.style.background}`); // Debug log
-      triggerButton.style.background = value;
-      console.log(`[Content.js] After update, Trigger Button Background: ${triggerButton.style.background}`); // Debug log
-    } else {
-      console.warn("[Content.js] Trigger button not found for background color update."); // Debug log
-    }
-  } else if (variableName === '--trigger-icon-span-background-color') {
-    const iconSpans = document.querySelectorAll('#smart-fill-trigger-button .smart-fill-icon span');
-    if (iconSpans.length > 0) {
-      iconSpans.forEach((span, index) => {
-        console.log(`[Content.js] Before update, Icon Span ${index} Background: ${span.style.background}`); // Debug log
-        span.style.background = value;
-        console.log(`[Content.js] After update, Icon Span ${index} Background: ${span.style.background}`); // Debug log
-      });
-    } else {
-      console.warn("[Content.js] Icon spans not found for background color update."); // Debug log
-    }
-  }
-
 function updateTriggerButtonOpacityVariable(value) {
   if (value === undefined || value === null) return;
   const numericValue = Math.min(1, Math.max(0, parseFloat(value) || 0)); // value is 0-1
@@ -485,9 +457,66 @@ function initContentScript() {
     await createTriggerOverlay();
     enableUserSelect();
 
+    // Debug: Log after a delay to ensure everything is applied
+    setTimeout(() => {
+      console.log('🐛 Debugging text selection issue...');
+      debugTextSelectionIssue();
+    }, 1000);
+
     // Always update the button state on load, but do not try to enter fullscreen automatically.
     updateFullscreenButtonState();
   });
+
+  // ========== EXPOSE DEBUG FUNCTIONS TO GLOBAL SCOPE ==========
+  // Can be called from browser console: debugTextSelectionIssue() or enableUserSelectWithDebug()
+  window.debugTextSelectionIssue = debugTextSelectionIssue;
+  window.enableUserSelectWithDebug = function() {
+    console.log('🔧 Re-running enableUserSelect with debug...');
+    enableUserSelect();
+    setTimeout(() => {
+      debugTextSelectionIssue();
+    }, 1000);
+  };
+  
+  // Quick test function
+  window.testTextSelection = function() {
+    console.log('🧪 Testing text selection...');
+    try {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      const testEl = document.body.querySelector('p') || document.body;
+      
+      range.selectNodeContents(testEl);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      
+      const selectedText = selection.toString();
+      if (selectedText.length > 0) {
+        console.log('✅ Selection successful! Selected:', selectedText.substring(0, 50));
+        return true;
+      } else {
+        console.warn('❌ Selection failed - no text selected');
+        return false;
+      }
+    } catch (e) {
+      console.error('❌ Selection test error:', e);
+      return false;
+    }
+  };
+
+  // Expose force selectable functions to global scope
+  window.forceElementSelectable = forceElementSelectable;
+  window.forceElementSelectableWithMonitoring = forceElementSelectableWithMonitoring;
+  window.forceSelectedElement = function() {
+    console.log('🚀 Click on element to force it selectable...');
+    document.addEventListener('click', function forceOnce(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      forceElementSelectableWithMonitoring(e.target);
+      console.log(`✅ Forced <${e.target.tagName}> to be selectable!`);
+      document.removeEventListener('click', forceOnce, true);
+    }, true);
+  };
 
   // Fetch theme preference on load
   chrome.storage.local.get("themeMode", (result) => {
@@ -1373,34 +1402,467 @@ Response (number only or "NONE"):`;
   /**
    * Injects CSS to re-enable user selection on pages that disable it.
    */
+  // ========== DEBUG FUNCTION ==========
+  function debugTextSelectionIssue() {
+    console.group('🔍 TEXT SELECTION DEBUG REPORT');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    
+    // 1. Check CSS user-select rules
+    console.group('📋 CSS User-Select Analysis');
+    const allElements = document.querySelectorAll('*');
+    let userSelectNoneCount = 0;
+    let userSelectTextCount = 0;
+    
+    allElements.forEach(el => {
+      const computed = getComputedStyle(el);
+      const userSelect = computed.userSelect;
+      if (userSelect === 'none') userSelectNoneCount++;
+      if (userSelect === 'text') userSelectTextCount++;
+    });
+    
+    console.log(`Total elements: ${allElements.length}`);
+    console.log(`Elements with user-select: none: ${userSelectNoneCount}`);
+    console.log(`Elements with user-select: text: ${userSelectTextCount}`);
+    
+    // Check document-level user-select
+    const docUserSelect = getComputedStyle(document.documentElement).userSelect;
+    console.log(`Document root user-select: ${docUserSelect}`);
+    console.log(`Body user-select: ${getComputedStyle(document.body).userSelect}`);
+    console.groupEnd();
+    
+    // 2. Check event listeners
+    console.group('🎯 Event Listeners on Document');
+    const testElement = document.createElement('div');
+    testElement.innerHTML = 'Test';
+    
+    const eventTypesToCheck = ['selectstart', 'contextmenu', 'copy', 'cut', 'paste', 'mousedown', 'mouseup', 'drag', 'dragstart'];
+    
+    eventTypesToCheck.forEach(eventType => {
+      const eventTest = new Event(eventType);
+      const wasBlocked = () => {
+        const handler = (e) => {
+          console.log(`  ❌ ${eventType} was prevented`);
+          return true;
+        };
+        // We can't directly check, but we can log what handlers might be attached
+      };
+      console.log(`  ${eventType}: Document listeners present (check DevTools)`);
+    });
+    console.groupEnd();
+    
+    // 3. Check inline handlers
+    console.group('🔗 Inline Event Handlers');
+    const handlers = ['oncontextmenu', 'onselectstart', 'oncopy', 'oncut', 'onpaste', 'onmousedown'];
+    handlers.forEach(handler => {
+      if (document[handler]) {
+        console.warn(`  ⚠️ document.${handler} = ${document[handler].toString().substring(0, 50)}...`);
+      }
+      if (document.body[handler]) {
+        console.warn(`  ⚠️ document.body.${handler} exists`);
+      }
+    });
+    console.log('  ✅ No inline handlers (if none logged above)');
+    console.groupEnd();
+    
+    // 4. Check for protections styles/scripts
+    console.group('🛡️ Protection Detection');
+    const scripts = document.querySelectorAll('script');
+    let protectionFound = false;
+    scripts.forEach(script => {
+      if (script.textContent.includes('user-select') || 
+          script.textContent.includes('selectstart') ||
+          script.textContent.includes('contextmenu')) {
+        console.warn('⚠️ Script with selection protection detected:');
+        console.log(script.textContent.substring(0, 200));
+        protectionFound = true;
+      }
+    });
+    
+    const styles = document.querySelectorAll('style');
+    styles.forEach(style => {
+      if (style.textContent.includes('user-select: none')) {
+        console.warn('⚠️ Style with user-select: none detected:');
+        console.log(style.textContent.substring(0, 200));
+        protectionFound = true;
+      }
+    });
+    
+    if (!protectionFound) {
+      console.log('✅ No obvious protection mechanisms found');
+    }
+    console.groupEnd();
+    
+    // 5. Check computed styles on common elements
+    console.group('🎨 Computed Styles on Key Elements');
+    const testSelectors = ['body', '.content', '#content', 'main', 'article', 'p', 'h1', 'h2', 'h3', 'span', 'div'];
+    testSelectors.forEach(selector => {
+      const el = document.querySelector(selector);
+      if (el) {
+        const computed = getComputedStyle(el);
+        console.log(`${selector}:`, {
+          'user-select': computed.userSelect,
+          'pointer-events': computed.pointerEvents,
+          'display': computed.display
+        });
+      }
+    });
+    console.groupEnd();
+    
+    // 6. Check if our styles were applied
+    console.group('✨ Our Applied Styles');
+    const ourStyle = document.querySelector('#enable-user-select-style');
+    if (ourStyle) {
+      console.log('✅ Our custom style injected');
+      console.log('Content:', ourStyle.textContent.substring(0, 200));
+    } else {
+      console.warn('❌ Our custom style NOT found!');
+    }
+    console.groupEnd();
+    
+    // // 7. Test actual selection capability
+    // console.group('🧪 Selection Test');
+    // try {
+    //   const testDiv = document.createElement('div');
+    //   testDiv.textContent = 'Try to select this text';
+    //   testDiv.id = 'debug-selection-test';
+    //   testDiv.style.cssText = 'position: fixed; top: 100px; left: 100px; background: yellow; padding: 10px; z-index: 999999; user-select: text !important; cursor: text;';
+      
+    //   document.body.appendChild(testDiv);
+    //   console.log('✅ Test element created (yellow box at top-left)');
+      
+    //   // Try to select it
+    //   const range = document.createRange();
+    //   range.selectNodeContents(testDiv);
+    //   const selection = window.getSelection();
+    //   selection.removeAllRanges();
+    //   selection.addRange(range);
+      
+    //   if (selection.toString().length > 0) {
+    //     console.log('✅ Selection works! Selected text:', selection.toString());
+    //   } else {
+    //     console.warn('⚠️ Selection created but toString() is empty');
+    //   }
+    // } catch (e) {
+    //   console.error('❌ Selection test failed:', e);
+    // }
+    // console.groupEnd();
+    
+    // 8. Check Shadow DOM
+    console.group('👻 Shadow DOM Analysis');
+    const elementsWithShadow = document.querySelectorAll('*');
+    let shadowCount = 0;
+    elementsWithShadow.forEach(el => {
+      if (el.shadowRoot) {
+        shadowCount++;
+        const shadowStyle = el.shadowRoot.querySelector('#enable-user-select-shadow-style');
+        console.log(`Shadow DOM found in <${el.tagName}>:`, {
+          'our style injected': !!shadowStyle,
+          'styles in shadow': el.shadowRoot.querySelectorAll('style').length,
+          'has content': el.shadowRoot.textContent.length > 0
+        });
+        
+        // Important: Check if this shadow DOM has user-selectable content
+        if (!shadowStyle && el.shadowRoot.textContent.length > 0) {
+          console.warn(`  ⚠️ WARNING: No our style in <${el.tagName}> shadow DOM!`);
+          console.warn(`     This shadow DOM has ${el.shadowRoot.textContent.length} characters of content`);
+          console.warn(`     But our injection may not have worked!`);
+        }
+      }
+    });
+    console.log(`Total shadow DOM elements: ${shadowCount}`);
+    console.groupEnd();
+    
+    // 9. Check iframes
+    console.group('📦 Iframe Analysis');
+    const iframes = document.querySelectorAll('iframe');
+    console.log(`Total iframes: ${iframes.length}`);
+    iframes.forEach((iframe, index) => {
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        if (iframeDoc) {
+          const iframeStyle = iframeDoc.querySelector('#enable-user-select-iframe-style');
+          console.log(`Iframe ${index}:`, {
+            'accessible': true,
+            'origin': iframe.src,
+            'our style injected': !!iframeStyle
+          });
+        }
+      } catch (e) {
+        console.log(`Iframe ${index}: Cross-origin (inaccessible)`);
+      }
+    });
+    console.groupEnd();
+    
+    // 10. Summary and recommendations
+    console.group('📊 Summary & Recommendations');
+    console.log('✅ If you see this message, enableUserSelect() was called');
+    console.log('🔍 Check above sections to identify the issue');
+    console.log('💡 Common issues:');
+    console.log('  1. Website reloads/overrides styles after our injection');
+    console.log('  2. Event listeners prevent selection even with CSS');
+    console.log('  3. Content rendered as image/canvas (not selectable text)');
+    console.log('  4. Text is inside iframe with different origin');
+    console.groupEnd();
+    
+    console.groupEnd();
+  }
+
   function enableUserSelect() {
+    // 1. Inject comprehensive CSS to enable selection everywhere
     const style = document.createElement("style");
     style.id = "enable-user-select-style";
     style.textContent = `
-    /* Re-enable text selection */
+    /* Re-enable text selection globally */
     * {
       -webkit-user-select: text !important; /* Safari */
       -moz-user-select: text !important;    /* Firefox */
       -ms-user-select: text !important;     /* IE 10+ */
       user-select: text !important;         /* Standard */
+      pointer-events: auto !important;      /* Enable pointer events */
+    }
+    
+    /* Override inline user-select styles */
+    [style*="user-select: none"] {
+      user-select: text !important;
+    }
+    
+    /* Remove overlay blocking */
+    [style*="pointer-events: none"],
+    [style*="pointer-events:none"] {
+      pointer-events: auto !important;
+    }
+    
+    /* Disable -webkit-user-select: none */
+    *[style*="-webkit-user-select"] {
+      -webkit-user-select: text !important;
+      user-select: text !important;
+    }
+    
+    /* Remove common protection classes */
+    .no-select, .unselectable, .prevent-select {
+      user-select: text !important;
+      -webkit-user-select: text !important;
+      pointer-events: auto !important;
     }
   `;
     document.head.appendChild(style);
 
-    // Forcefully re-enable context menu and selection.
-    // Use capturing to prevent other listeners from running.
-    const stopPropagation = e => e.stopPropagation();
-    document.addEventListener('contextmenu', stopPropagation, true);
-    document.addEventListener('selectstart', stopPropagation, true);
-    document.addEventListener('dragstart', stopPropagation, true);
+    // 2. Stop all event propagation that blocks selection/copy
+    const blockingEvents = ['copy', 'cut', 'paste', 'contextmenu', 'selectstart', 'mousedown', 'mouseup', 'drag', 'dragstart', 'dragend', 'dragenter', 'dragleave', 'dragover'];
+    blockingEvents.forEach(evt => {
+      document.addEventListener(evt, (e) => {
+        // For selection-related events, stop propagation
+        if (['selectstart', 'copy', 'cut', 'paste', 'contextmenu'].includes(evt)) {
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          e.preventDefault = () => {}; // Override preventDefault
+        }
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }, true);
+    });
 
-    // Nullify any inline event handlers on the body and document
-    document.body.oncontextmenu = null;
-    document.body.onselectstart = null;
-    document.body.ondragstart = null;
-    document.oncontextmenu = null;
-    document.onselectstart = null;
-    document.ondragstart = null;
+    // Also intercept preventDefault on events
+    const originalPreventDefault = Event.prototype.preventDefault;
+    Event.prototype.preventDefault = function() {
+      if (['selectstart', 'copy', 'cut', 'paste', 'contextmenu'].includes(this.type)) {
+        console.debug(`[Selection] Blocked prevent on ${this.type}`);
+        return; // Don't prevent for selection events
+      }
+      return originalPreventDefault.call(this);
+    };
+
+    // 3. Nullify inline event handlers on document and body
+    const eventHandlers = ['oncontextmenu', 'onselectstart', 'ondragstart', 'oncopy', 'oncut', 'onpaste', 'onmousedown', 'onmouseup', 'ondrag', 'ondragend'];
+    eventHandlers.forEach(handler => {
+      document[handler] = null;
+      document.body[handler] = null;
+      document.documentElement[handler] = null;
+    });
+
+    // 4. Force all elements to enable selection and pointer events
+    const forceSelectionOnElements = () => {
+      document.querySelectorAll("*").forEach(el => {
+        // Skip our own elements
+        if (el.id && el.id.includes('smart-fill')) return;
+        
+        el.style.setProperty("user-select", "text", "important");
+        el.style.setProperty("-webkit-user-select", "text", "important");
+        el.style.setProperty("-moz-user-select", "text", "important");
+        el.style.setProperty("-ms-user-select", "text", "important");
+        el.style.setProperty("pointer-events", "auto", "important");
+        el.style.setProperty("-webkit-user-drag", "none", "important");
+        
+        // Remove inline event handlers that block selection
+        eventHandlers.forEach(handler => {
+          el[handler] = null;
+        });
+      });
+    };
+    forceSelectionOnElements();
+
+    // 5. Handle elements with high z-index that might be overlays
+    document.querySelectorAll("*").forEach(el => {
+      const zIndex = getComputedStyle(el).zIndex;
+      if (!isNaN(zIndex) && parseInt(zIndex) > 10) {
+        const style = getComputedStyle(el);
+        // Only disable if it looks like overlay (not clickable content)
+        if (style.opacity === '0' || style.display === 'none') {
+          el.style.setProperty("pointer-events", "none", "important");
+        }
+      }
+    });
+
+    // 6. Handle Shadow DOM - Apply styles inside shadow roots
+    const applyShadowDOMStyles = () => {
+      document.querySelectorAll('*').forEach(el => {
+        if (el.shadowRoot) {
+          // Check if style already applied
+          if (!el.shadowRoot.querySelector('#enable-user-select-shadow-style')) {
+            const shadowStyle = document.createElement('style');
+            shadowStyle.id = 'enable-user-select-shadow-style';
+            shadowStyle.textContent = `
+              * {
+                -webkit-user-select: text !important;
+                -moz-user-select: text !important;
+                -ms-user-select: text !important;
+                user-select: text !important;
+                pointer-events: auto !important;
+              }
+              
+              /* Override draggable */
+              [draggable="true"] {
+                -webkit-user-drag: none !important;
+              }
+            `;
+            el.shadowRoot.appendChild(shadowStyle);
+            
+            // Also apply inline styles to shadow DOM elements
+            el.shadowRoot.querySelectorAll('*').forEach(shadowEl => {
+              shadowEl.style.setProperty("user-select", "text", "important");
+              shadowEl.style.setProperty("-webkit-user-select", "text", "important");
+              shadowEl.style.setProperty("pointer-events", "auto", "important");
+              eventHandlers.forEach(handler => {
+                shadowEl[handler] = null;
+              });
+            });
+            
+            console.log(`[Selection] Applied styles to shadow DOM in <${el.tagName}>`);
+          }
+        }
+      });
+    };
+    applyShadowDOMStyles();
+
+    // 7. Handle iframes with same-origin
+    const applyIframeStyles = () => {
+      document.querySelectorAll('iframe').forEach(iframe => {
+        try {
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+          if (iframeDoc) {
+            // Create and inject style in iframe
+            const iframeStyle = iframeDoc.createElement('style');
+            iframeStyle.id = 'enable-user-select-iframe-style';
+            iframeStyle.textContent = `
+              * {
+                -webkit-user-select: text !important;
+                -moz-user-select: text !important;
+                -ms-user-select: text !important;
+                user-select: text !important;
+                pointer-events: auto !important;
+              }
+            `;
+            if (iframeDoc.head) {
+              iframeDoc.head.appendChild(iframeStyle);
+            } else if (iframeDoc.documentElement) {
+              iframeDoc.documentElement.appendChild(iframeStyle);
+            }
+
+            // Stop event propagation in iframe
+            blockingEvents.forEach(evt => {
+              iframeDoc.addEventListener(evt, (e) => {
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+              }, true);
+            });
+
+            // Nullify handlers in iframe
+            eventHandlers.forEach(handler => {
+              iframeDoc[handler] = null;
+              iframeDoc.body[handler] = null;
+              iframeDoc.documentElement[handler] = null;
+            });
+
+            // Apply to all elements in iframe
+            iframeDoc.querySelectorAll('*').forEach(iframeEl => {
+              iframeEl.style.setProperty("user-select", "text", "important");
+              iframeEl.style.setProperty("pointer-events", "auto", "important");
+              eventHandlers.forEach(handler => {
+                iframeEl[handler] = null;
+              });
+            });
+          }
+        } catch (e) {
+          // Cross-origin iframe - cannot access, silently skip
+          console.debug('[enableUserSelect] Cross-origin iframe detected, skipping:', e.message);
+        }
+      });
+    };
+    applyIframeStyles();
+
+    // 8. Use MutationObserver to handle dynamically added elements
+    const observer = new MutationObserver((mutations) => {
+      let needsReapply = false;
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === 1) { // Element node
+              if (node.id && node.id.includes('smart-fill')) return; // Skip our elements
+              
+              node.style.setProperty("user-select", "text", "important");
+              node.style.setProperty("pointer-events", "auto", "important");
+              
+              // If the added node has shadow root, apply styles
+              if (node.shadowRoot && !node.shadowRoot.querySelector('#enable-user-select-shadow-style')) {
+                needsReapply = true;
+              }
+              
+              // If the added node is an iframe, apply styles
+              if (node.tagName === 'IFRAME') {
+                needsReapply = true;
+              }
+            }
+          });
+        }
+        // Also watch for attribute changes (style modifications)
+        if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+          const el = mutation.target;
+          if (el.id && el.id.includes('smart-fill')) return;
+          
+          // Reapply user-select on style change
+          if (el.style.userSelect === 'none' || el.style.WebkitUserSelect === 'none') {
+            el.style.setProperty("user-select", "text", "important");
+            el.style.setProperty("-webkit-user-select", "text", "important");
+          }
+        }
+      });
+      
+      if (needsReapply) {
+        applyShadowDOMStyles();
+        applyIframeStyles();
+      }
+    });
+
+    // Start observing for dynamic changes - include attributes for style monitoring
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class'],
+      attributeOldValue: false
+    });
+
+    console.log('[Selection] enableUserSelect() fully initialized');
   }
 
   // Action Button SVG icons
@@ -3590,6 +4052,91 @@ Response (number only or "NONE"):`;
     if (confirmButton) confirmButton.disabled = !state.stagedElement;
   }
 
+  // ========== FORCE SELECTABLE ELEMENTS ==========
+  /**
+   * Force a specific element and its content to be selectable
+   * Applies aggressive CSS and JS to override any protection
+   */
+  function forceElementSelectable(element) {
+    if (!element) return;
+    
+    try {
+      // 1. Apply inline CSS styles
+      element.style.setProperty("user-select", "text", "important");
+      element.style.setProperty("-webkit-user-select", "text", "important");
+      element.style.setProperty("-moz-user-select", "text", "important");
+      element.style.setProperty("-ms-user-select", "text", "important");
+      element.style.setProperty("pointer-events", "auto", "important");
+      element.style.setProperty("-webkit-user-drag", "none", "important");
+      
+      // 2. Recursively apply to all children
+      element.querySelectorAll('*').forEach(child => {
+        if (child.id && child.id.includes('smart-fill')) return; // Skip our elements
+        
+        child.style.setProperty("user-select", "text", "important");
+        child.style.setProperty("-webkit-user-select", "text", "important");
+        child.style.setProperty("-moz-user-select", "text", "important");
+        child.style.setProperty("pointer-events", "auto", "important");
+      });
+      
+      // 3. Remove all event handlers that block selection from this element tree
+      const eventHandlers = ['oncontextmenu', 'onselectstart', 'ondragstart', 'oncopy', 'oncut', 'onpaste', 'onmousedown', 'onmouseup'];
+      [element, ...element.querySelectorAll('*')].forEach(el => {
+        eventHandlers.forEach(handler => {
+          el[handler] = null;
+        });
+      });
+      
+      // 4. Inject style tag into element's shadow DOM if it exists
+      if (element.shadowRoot) {
+        const shadowStyle = document.createElement('style');
+        shadowStyle.textContent = '* { user-select: text !important; pointer-events: auto !important; }';
+        element.shadowRoot.appendChild(shadowStyle);
+      }
+      
+      console.log(`✅ [Force Selectable] Applied to <${element.tagName}>`);
+    } catch (e) {
+      console.error(`❌ [Force Selectable] Error:`, e);
+    }
+  }
+
+  /**
+   * Force element selectable and add to mutation observer
+   * Ensures children added later are also selectable
+   */
+  function forceElementSelectableWithMonitoring(element) {
+    forceElementSelectable(element);
+    
+    // Watch for changes in this specific element
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === 1) { // Element node
+              forceElementSelectable(node);
+            }
+          });
+        }
+        // Also watch for style changes
+        if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+          const el = mutation.target;
+          if (el.style.userSelect === 'none' || el.style.WebkitUserSelect === 'none') {
+            forceElementSelectable(el);
+          }
+        }
+      });
+    });
+    
+    observer.observe(element, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style']
+    });
+    
+    console.log(`🔍 [Monitoring] Watching <${element.tagName}> for changes`);
+  }
+
   // Attaches all necessary event listeners for the builder
   function attachBuilderEventListeners() {
     // Use a single object for listener functions to easily add/remove them
@@ -3603,6 +4150,9 @@ Response (number only or "NONE"):`;
         if (profileBuilderState.hoveredElement) {
           profileBuilderState.hoveredElement.style.outline = '';
         }
+
+        // Force the hovered element to be selectable
+        forceElementSelectable(target);
 
         // Highlight new element and update state
         target.style.outline = '2px dashed #25D366';
@@ -3645,6 +4195,9 @@ Response (number only or "NONE"):`;
           if (state.stagedElement) {
             state.stagedElement.style.outline = '';
           }
+
+          // Force the staged element to be selectable with continuous monitoring
+          forceElementSelectableWithMonitoring(state.hoveredElement);
 
           // Stage the new selection
           state.stagedElement = state.hoveredElement;
