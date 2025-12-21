@@ -3498,6 +3498,8 @@ Response (number only or "NONE"):`;
           updateProgressOverlay(`  Filled: Question ${index}/${total}`, target.label);
           finalizeHistoryEntry("answered", target.label);
         } else {
+          // Fallback: Display AI answer in a toast if it could not be selected automatically
+          showContentToast(`AI answer for "Question ${index}/${total}" could not be automatically selected. Suggested: "${aiAnswer}"`, 'info');
           finalizeHistoryEntry("no match", aiAnswer);
         }
       } else if (detectedAnswerField.type === 'single_checkbox') {
@@ -3509,9 +3511,18 @@ Response (number only or "NONE"):`;
         if (aiAnswer.toLowerCase() === 'yes') {
           detectedAnswerField.element.checked = true;
           detectedAnswerField.element.dispatchEvent(new Event('change', { bubbles: true }));
+          updateProgressOverlay(`  Filled: Question ${index}/${total}`, aiAnswer);
+          finalizeHistoryEntry("answered", aiAnswer);
+        } else if (aiAnswer.toLowerCase() === 'no') {
+          detectedAnswerField.element.checked = false; // Explicitly uncheck if AI says NO
+          detectedAnswerField.element.dispatchEvent(new Event('change', { bubbles: true }));
+          updateProgressOverlay(`  Filled: Question ${index}/${total}`, aiAnswer);
+          finalizeHistoryEntry("answered", aiAnswer);
+        } else {
+          // Fallback: Display AI answer in a toast if the answer is neither YES nor NO
+          showContentToast(`AI suggested: "${aiAnswer}" for "Question ${index}/${total}". Checkbox not changed automatically.`, 'info');
+          finalizeHistoryEntry("no match", aiAnswer);
         }
-        updateProgressOverlay(`  Filled: Question ${index}/${total}`, aiAnswer);
-        finalizeHistoryEntry("answered", aiAnswer);
       } else if (detectedAnswerField.type === 'dropdown') {
         const selectElement = detectedAnswerField.element;
         const options = Array.from(selectElement.options).map(opt => ({ element: opt, label: opt.textContent }));
@@ -3540,6 +3551,8 @@ Response (number only or "NONE"):`;
           updateProgressOverlay(`  Filled: Question ${index}/${total}`, target.label);
           finalizeHistoryEntry("answered", target.element.value);
         } else {
+          // Fallback: Display AI answer in a toast if it could not be selected automatically
+          showContentToast(`AI answer for "Question ${index}/${total}" could not be automatically selected. Suggested: "${aiAnswer}"`, 'info');
           finalizeHistoryEntry("no match (dropdown)", aiAnswer);
         }
       } else {
@@ -3754,6 +3767,8 @@ Response (number only or "NONE"):`;
 
       await addAnsweredQuestionHash(questionHash);
     } else {
+      // Fallback: Display AI answer in a toast if it could not be selected automatically
+      showContentToast(`AI answer for "${questionText}" could not be automatically selected. Suggested: "${aiAnswer}"`, 'info');
       finalizeHistoryEntry("no match", aiAnswer);
     }
     updateProgressBar(1);
@@ -4100,6 +4115,12 @@ Response (number only or "NONE"):`;
       return;
     }
 
+    // Force enable text selection/pointer events during profile creation
+    // This ensures users can actually click on elements that might be blocked
+    console.log("[Profile Builder] Forcing user select for builder session.");
+    forceSelectableEnabled = true; // Temporarily enable flag
+    enableUserSelect(); // Run the enabler
+
     // 1. Initialize State
     profileBuilderState = {
       isActive: true,
@@ -4202,7 +4223,7 @@ Response (number only or "NONE"):`;
       <p id="${BUILDER_UI_IDS.INSTRUCTIONS}"></p>
       <div id="sf-builder-preview-box">
         <span>Selector:</span>
-        <code id="${BUILDER_UI_IDS.SELECTOR_PREVIEW}">Hover over an element...</code>
+        <input type="text" id="${BUILDER_UI_IDS.SELECTOR_PREVIEW}" placeholder="Hover over an element..." spellcheck="false">
       </div>
     </div>
     <div id="sf-builder-actions">
@@ -4221,8 +4242,8 @@ Response (number only or "NONE"):`;
       transform: translateX(-50%);
       width: 90%;
       max-width: 700px;
-      background: rgba(11, 15, 20, 0.10);
-      color: #000000ff;
+      background: rgba(11, 15, 20, 0.95);
+      color: #F2F4F6;
       border: 1px solid rgba(255,255,255,0.1);
       border-radius: 12px;
       box-shadow: 0 10px 40px rgba(0,0,0,0.5);
@@ -4233,20 +4254,34 @@ Response (number only or "NONE"):`;
       padding: 15px 20px;
       font-family: 'Segoe UI', sans-serif;
       transition: bottom 0.3s ease;
-      pointer-events: none;
+      /* pointer-events: none; REMOVED to allow input interaction */
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
     }
-    #sf-builder-content { flex-grow: 1; }
-    #${BUILDER_UI_IDS.INSTRUCTIONS} { margin: 0 0 10px 0; font-size: 16px; }
-    #sf-builder-preview-box span { color: #888; margin-right: 8px; }
-    #${BUILDER_UI_IDS.SELECTOR_PREVIEW} { font-family: 'Courier New', monospace; font-size: 13px; color: #25D366; word-break: break-all; }
+    #sf-builder-content { flex-grow: 1; margin-right: 20px; }
+    #${BUILDER_UI_IDS.INSTRUCTIONS} { margin: 0 0 10px 0; font-size: 15px; color: #fff; font-weight: 500; }
+    #sf-builder-preview-box { display: flex; align-items: center; }
+    #sf-builder-preview-box span { color: #888; margin-right: 8px; font-size: 13px; }
+    #${BUILDER_UI_IDS.SELECTOR_PREVIEW} { 
+        font-family: 'Courier New', monospace; 
+        font-size: 13px; 
+        color: #25D366; 
+        background: rgba(0,0,0,0.3);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 4px;
+        padding: 6px 10px;
+        width: 100%;
+        flex-grow: 1;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+    #${BUILDER_UI_IDS.SELECTOR_PREVIEW}:focus { border-color: #25D366; }
     #sf-builder-actions { display: flex; gap: 10px; pointer-events: auto; }
     .sf-builder-button { 
       padding: 8px 16px; 
       border: 1px solid rgba(255,255,255,0.2); 
       background: transparent; 
-      color: #000000ff;
+      color: #F2F4F6;
       border-radius: 6px;
       cursor: pointer;
       transition: background 0.2s;
@@ -4254,10 +4289,11 @@ Response (number only or "NONE"):`;
       align-items: center;
       display: flex;
       pointer-events: auto;
+      font-size: 13px;
     }
     .sf-builder-button:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
     .sf-builder-button:disabled { cursor: not-allowed; opacity: 0.5; }
-    .sf-builder-button-danger:hover { background: #ff6b7a; border-color: #ff6b7a; }
+    .sf-builder-button-danger:hover { background: rgba(255, 107, 122, 0.2); border-color: #ff6b7a; color: #ff6b7a; }
 
     @media (max-width: 720px) {
       #${BUILDER_UI_IDS.CONTAINER} {
@@ -4268,6 +4304,7 @@ Response (number only or "NONE"):`;
       }
       #sf-builder-content {
         margin-bottom: 15px;
+        margin-right: 0;
       }
       #sf-builder-actions {
         justify-content: space-between;
@@ -4276,7 +4313,7 @@ Response (number only or "NONE"):`;
       }
       .sf-builder-button {
         flex-grow: 1;
-        min-width: 120px;
+        min-width: 100px;
       }
     }
   `;
@@ -4425,10 +4462,20 @@ Response (number only or "NONE"):`;
         target.style.outline = '2px dashed #25D366';
         profileBuilderState.hoveredElement = target;
 
-        // Update selector preview
+        // Update selector preview INPUT
         const selectorPreview = document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW);
-        if (selectorPreview) {
-          selectorPreview.textContent = generateSelector(target);
+        if (selectorPreview && document.activeElement !== selectorPreview) {
+          const state = profileBuilderState;
+          const step = state.steps[state.currentStepIndex];
+          // Determine if we should generate relative or absolute selector based on current step
+          let selector = '';
+           if (step.isRelative && state.currentStepIndex > 0) { // Check index > 0 for safety
+            const parentStep = state.steps[state.currentStepIndex - 1];
+            selector = generateRelativeSelector(target, parentStep.element);
+          } else {
+            selector = generateSelector(target);
+          }
+          selectorPreview.value = selector || '';
         }
 
         // Update confirm button state
@@ -4441,11 +4488,14 @@ Response (number only or "NONE"):`;
           profileBuilderState.hoveredElement.style.outline = '';
           profileBuilderState.hoveredElement = null;
 
-          const selectorPreview = document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW);
-          if (selectorPreview) selectorPreview.textContent = 'Hover over an element...';
+          // Don't clear input if we have a staged element or if user is typing
+          if (!profileBuilderState.stagedElement && document.activeElement !== document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW)) {
+             const selectorPreview = document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW);
+             if (selectorPreview) selectorPreview.value = '';
+          }
 
           const confirmButton = document.getElementById(BUILDER_UI_IDS.CONFIRM_BUTTON);
-          if (confirmButton) confirmButton.disabled = true;
+          if (confirmButton && !profileBuilderState.stagedElement) confirmButton.disabled = true;
         }
       },
 
@@ -4472,7 +4522,20 @@ Response (number only or "NONE"):`;
 
           // Apply staging highlight & update UI
           state.stagedElement.style.outline = '2px solid #007bff';
-          document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW).textContent = generateSelector(state.stagedElement);
+          
+          // Update input one last time to ensure it matches the clicked element
+          const selectorPreview = document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW);
+          const step = state.steps[state.currentStepIndex];
+          let selector = '';
+          if (step.isRelative && state.currentStepIndex > 0) {
+             const parentStep = state.steps[state.currentStepIndex - 1];
+             selector = generateRelativeSelector(state.stagedElement, parentStep.element);
+          } else {
+             selector = generateSelector(state.stagedElement);
+          }
+          selectorPreview.value = selector || '';
+          selectorPreview.focus(); // Focus the input so user can edit immediately
+
           document.getElementById(BUILDER_UI_IDS.CONFIRM_BUTTON).disabled = false;
 
           // Temporarily disable hover effects so user can move to confirm button
@@ -4488,13 +4551,16 @@ Response (number only or "NONE"):`;
         const step = state.steps[state.currentStepIndex];
         const selectedElement = state.stagedElement;
 
-        // Generate and store selector
-        if (step.isRelative) {
-          const parentStep = state.steps[state.currentStepIndex - 1];
-          step.selector = generateRelativeSelector(selectedElement, parentStep.element);
-        } else {
-          step.selector = generateSelector(selectedElement);
+        // READ SELECTOR FROM INPUT (Allows user edits)
+        const selectorInput = document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW);
+        const finalSelector = selectorInput.value.trim();
+
+        if (!finalSelector) {
+            showContentToast("Selector cannot be empty.", "error");
+            return;
         }
+
+        step.selector = finalSelector;
         step.element = selectedElement; // Store element for relative selections
 
         // Clear outline from confirmed element
@@ -4506,6 +4572,10 @@ Response (number only or "NONE"):`;
         if (state.currentStepIndex < state.steps.length - 1) {
           state.currentStepIndex++;
           updateBuilderUI();
+          
+          // Reset input for next step
+          selectorInput.value = '';
+          
           showContentToast(`Step ${state.currentStepIndex} completed. Now for the next step.`, 'success');
 
           // Re-enable hover listeners for the next step
@@ -4530,7 +4600,7 @@ Response (number only or "NONE"):`;
           document.addEventListener('mouseout', state.listeners.mouseout);
 
           document.getElementById(BUILDER_UI_IDS.CONFIRM_BUTTON).disabled = true;
-          document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW).textContent = 'Hover over an element...';
+          document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW).value = '';
           showContentToast('Selection cancelled. Hover to select an element.', 'info');
           return;
         }
@@ -4559,7 +4629,7 @@ Response (number only or "NONE"):`;
         updateBuilderUI();
         const selectorPreview = document.getElementById(BUILDER_UI_IDS.SELECTOR_PREVIEW);
         if (selectorPreview) {
-          selectorPreview.textContent = previousStep.selector || 'Hover over an element...';
+          selectorPreview.value = previousStep.selector || ''; // Use value
         }
         showContentToast(`Reverted to step ${state.currentStepIndex + 1}.`, 'info');
       },
@@ -4789,8 +4859,18 @@ Response (number only or "NONE"):`;
   function determineFieldType(elements) {
     if (!elements || elements.length === 0) return 'unknown';
 
+    // Helper to resolve label to input
+    const resolveElement = (el) => {
+      if (el.tagName.toLowerCase() === 'label' && el.getAttribute('for')) {
+        const inputId = el.getAttribute('for');
+        const inputEl = document.getElementById(inputId);
+        if (inputEl) return inputEl;
+      }
+      return el;
+    };
+
     if (elements.length === 1) {
-      const el = elements[0];
+      const el = resolveElement(elements[0]);
       const tagName = el.tagName.toLowerCase();
       const inputType = el.type ? el.type.toLowerCase() : '';
 
@@ -4804,15 +4884,24 @@ Response (number only or "NONE"):`;
         return 'dropdown';
       }
       if (tagName === 'input' && inputType === 'checkbox') {
-        return 'single_checkbox';
+        return 'single_checkbox'; // Default to single, context might imply group later
       }
-      if (['div', 'span', 'label'].includes(tagName) && el.hasAttribute('role') && el.getAttribute('role').includes('radio')) {
+      if (tagName === 'input' && inputType === 'radio') {
         return 'multiple_choice';
+      }
+      if (['div', 'span', 'label'].includes(tagName)) {
+         // Check for role
+         if (el.hasAttribute('role') && el.getAttribute('role').includes('radio')) return 'multiple_choice';
+         // Check for click-to-select class patterns (heuristic)
+         if (el.classList.contains('option') || el.classList.contains('choice')) return 'multiple_choice';
+         // Fallback: if it's a label without a 'for' but possibly wrapping an input?
+         if (el.querySelector('input[type="radio"]')) return 'multiple_choice';
+         if (el.querySelector('input[type="checkbox"]')) return 'single_checkbox';
       }
     }
 
     if (elements.length > 1) {
-      const firstEl = elements[0];
+      const firstEl = resolveElement(elements[0]);
       const tagName = firstEl.tagName.toLowerCase();
       const inputType = firstEl.type ? firstEl.type.toLowerCase() : '';
 
@@ -4823,7 +4912,6 @@ Response (number only or "NONE"):`;
         return 'checkbox_group';
       }
       if (['div', 'span', 'label'].includes(tagName) && inputType === '') {
-        // More generic check for clickable choices. If multiple non-input divs/spans/labels are selected, assume multiple_choice.
         return 'multiple_choice';
       }
     }
@@ -4834,6 +4922,17 @@ Response (number only or "NONE"):`;
   function escapeCssSelector(str) {
     // Escape common CSS selector special characters, especially ':' for Tailwind CSS
     return str.replace(/([.:])/g, '\\$1');
+  }
+
+  // NEW HELPER: Smart Class Processing
+  function getSmartClassSelector(className) {
+     // Check if class ends with a number (e.g., soal1, item-12)
+     // and the prefix is substantial (>= 3 chars)
+     const match = className.match(/^([a-zA-Z\-_]+)(\d+)$/);
+     if (match && match[1].length >= 3) {
+         return `[class*='${match[1]}']`;
+     }
+     return '.' + escapeCssSelector(className);
   }
 
   function generateRelativeSelector(el, rootElement) {
@@ -4854,7 +4953,8 @@ Response (number only or "NONE"):`;
 
       const classes = Array.from(currentEl.classList);
       if (classes.length > 0) {
-        part += '.' + classes.map(cls => escapeCssSelector(cls)).join('.');
+        // Use smart class selector generation
+        part += classes.map(cls => getSmartClassSelector(cls)).join('');
       }
 
       let sibling = currentEl;
@@ -4892,7 +4992,8 @@ Response (number only or "NONE"):`;
 
       const classes = Array.from(currentEl.classList);
       if (classes.length > 0) {
-        part += '.' + classes.map(cls => escapeCssSelector(cls)).join('.');
+        // Use smart class selector generation
+        part += classes.map(cls => getSmartClassSelector(cls)).join('');
       }
 
       // Add nth-of-type to distinguish between siblings

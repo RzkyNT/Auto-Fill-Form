@@ -902,8 +902,9 @@
         <div class="settings-accordion-content">
           <!-- General Settings -->
           <h4 style="margin-top: 0;">General</h4>
-          <label class="switchs">
-            <input type="checkbox" id="auto-run" />
+          <label class="switchs custom-checkbox-container">
+            <input type="checkbox" id="auto-run"/>
+              <span class="checkmark"></span>
             Auto-run on page load
           </label>
 
@@ -924,8 +925,9 @@
           <!-- UI Customization -->
           <h4 style="margin-top: 20px; border-top: 1px solid var(--color-border); padding-top: 15px;">UI Customization
           </h4>
-          <label class="switchs" style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+          <label class="switchs custom-checkbox-container" style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
             <input type="checkbox" id="show-floating-menu" checked />
+              <span class="checkmark"></span>
             Show Floating Menu
           </label>
 
@@ -1072,7 +1074,7 @@
           <h4 style="margin-top: 0px; border-top: none; padding-top: 0px;">Selection Features</h4>
           <p class="history-subhead">Control text selection on protected websites. Disable if it interferes with other sites like WhatsApp.</p>
           
-          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--color-surface-alt); border-radius: 8px; border: 1px solid var(--color-border);">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--color-surface-alt); border-radius: 8px; border: 1px solid var(--color-border); margin-top: 8px;">
             <div style="flex: 1;">
               <label style="font-weight: 600; cursor: pointer; margin: 0; display: block;">Force Element Selectable</label>
               <p style="font-size: 0.85em; color: var(--color-muted); margin-top: 2px; margin-bottom: 0;">Apply forced selection during profile creation</p>
