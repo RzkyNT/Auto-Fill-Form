@@ -750,6 +750,52 @@
       outline: none;
       box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.25);
     }
+
+    /* Force Selectable Toggle - Custom Button Style */
+    #force-selectable-toggle {
+      position: relative !important;
+      width: 50px !important;
+      height: 26px !important;
+      background-color: #555 !important;
+      border-radius: 13px !important;
+      cursor: pointer !important;
+      border: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      flex-shrink: 0 !important;
+      transition: background-color 0.3s ease !important;
+      box-shadow: none !important;
+      display: inline-block !important;
+      font-size: 0 !important;
+      line-height: 0 !important;
+    }
+
+    #force-selectable-toggle:hover {
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    #force-selectable-toggle.active {
+      background-color: var(--color-accent) !important;
+    }
+
+    #force-selectable-toggle::after {
+      content: '' !important;
+      position: absolute !important;
+      width: 22px !important;
+      height: 22px !important;
+      background-color: white !important;
+      border-radius: 50% !important;
+      left: 2px !important;
+      top: 2px !important;
+      transition: left 0.3s ease !important;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+      pointer-events: none !important;
+    }
+
+    #force-selectable-toggle.active::after {
+      left: 26px !important;
+    }
   </style>
 </head>
 
@@ -1023,6 +1069,17 @@
           </span>
         </summary>
         <div class="settings-accordion-content">
+          <h4 style="margin-top: 0px; border-top: none; padding-top: 0px;">Selection Features</h4>
+          <p class="history-subhead">Control text selection on protected websites. Disable if it interferes with other sites like WhatsApp.</p>
+          
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--color-surface-alt); border-radius: 8px; border: 1px solid var(--color-border);">
+            <div style="flex: 1;">
+              <label style="font-weight: 600; cursor: pointer; margin: 0; display: block;">Force Element Selectable</label>
+              <p style="font-size: 0.85em; color: var(--color-muted); margin-top: 2px; margin-bottom: 0;">Apply forced selection during profile creation</p>
+            </div>
+            <button id="force-selectable-toggle" class="active" aria-pressed="true" style="margin-left: 12px;"></button>
+          </div>
+
           <h4 style="margin-top: 15px; border-top: 1px solid var(--color-border); padding-top: 15px;">Backup & Restore
           </h4>
           <p class="history-subhead">Export or import all your settings, API keys, and personalized data.</p>

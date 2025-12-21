@@ -109,9 +109,66 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Load other non-activation-related settings from storage
-  chrome.storage.local.get(["autoRun", "fillMode", "personalizedData", "personalFillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity", "showFloatingMenu", "floatingMenuSize", "triggerStyle", "debugMode"], (result) => {
+  chrome.storage.local.get(["autoRun", "fillMode", "personalizedData", "personalFillMode", "triggerButtonBgColor", "triggerIconSpanColor", "aiProvider", "openAiConfig", "themeMode", "triggerButtonOpacity", "showFloatingMenu", "floatingMenuSize", "triggerStyle", "debugMode", "forceSelectableEnabled"], (result) => {
     autoRunCheckbox.checked = !!result.autoRun;
     showFloatingMenuCheckbox.checked = result.showFloatingMenu !== false; // Default to true
+    
+    // Load Force Selectable Toggle
+    const forceSelectableToggle = document.getElementById("force-selectable-toggle");
+    if (forceSelectableToggle) {
+      // Default to true if not set, but respect the stored value explicitly
+      const isEnabled = result.hasOwnProperty("forceSelectableEnabled") 
+        ? result.forceSelectableEnabled === true 
+        : true;
+      
+      console.log("[Popup.js] Force Selectable loaded from storage:", isEnabled);
+      
+      // Set initial state
+      if (isEnabled) {
+        forceSelectableToggle.classList.add("active");
+        forceSelectableToggle.setAttribute("aria-pressed", "true");
+      } else {
+        forceSelectableToggle.classList.remove("active");
+        forceSelectableToggle.setAttribute("aria-pressed", "false");
+      }
+      
+      // Click handler
+      forceSelectableToggle.addEventListener("click", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const isCurrentlyActive = this.classList.contains("active");
+        const newState = !isCurrentlyActive;
+        
+        console.log("[Popup.js] Toggle clicked, new state:", newState);
+        
+        if (newState) {
+          this.classList.add("active");
+          this.setAttribute("aria-pressed", "true");
+        } else {
+          this.classList.remove("active");
+          this.setAttribute("aria-pressed", "false");
+        }
+        
+        // Save to storage - explicitly as boolean
+        chrome.storage.local.set({ forceSelectableEnabled: newState === true }, () => {
+          console.log("[Popup.js] Force Selectable saved to storage:", newState);
+        });
+        
+        // Notify all tabs with explicit boolean
+        chrome.tabs.query({}, (tabs) => {
+          console.log("[Popup.js] Notifying", tabs.length, "tabs about toggle change");
+          tabs.forEach(tab => {
+            chrome.tabs.sendMessage(tab.id, { 
+              action: 'updateForceSelectableToggle', 
+              enabled: newState === true
+            }).catch((err) => {
+              // Silently ignore tabs that don't respond
+            });
+          });
+        });
+      });
+    }
 
     // Load and render Personalized Data
     renderPersonalDataFields(result.personalizedData);

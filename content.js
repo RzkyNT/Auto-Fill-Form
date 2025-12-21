@@ -46,6 +46,36 @@ let cachedTriggerButtonBgColor = null;
 let cachedTriggerIconSpanColor = null;
 let cachedTriggerButtonOpacity = null;
 
+// State for Force Selectable toggle (default: enabled)
+let forceSelectableEnabled = true;
+
+// Load forceSelectableEnabled from storage on init and ensure it's initialized
+function initForceSelectableState() {
+  chrome.storage.local.get(["forceSelectableEnabled"], (result) => {
+    // Explicitly check the result
+    if (result.hasOwnProperty("forceSelectableEnabled")) {
+      forceSelectableEnabled = result.forceSelectableEnabled === true; // Must be strictly true
+      console.log("[Content.js] ✅ Force Selectable Toggle LOADED from storage:", forceSelectableEnabled);
+    } else {
+      // First time - initialize to true and save it
+      forceSelectableEnabled = true;
+      chrome.storage.local.set({ forceSelectableEnabled: true });
+      console.log("[Content.js] ℹ️ Force Selectable Toggle INITIALIZED to true (first time)");
+    }
+  });
+}
+
+// Initialize on script load
+initForceSelectableState();
+
+// Listen for changes from popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'updateForceSelectableToggle') {
+    forceSelectableEnabled = message.enabled === true; // Must be strictly true
+    console.log("[Content.js] 🔄 Force Selectable Toggle UPDATED from popup to:", forceSelectableEnabled);
+  }
+});
+
 function updateTriggerColorVariable(variableName, value) {
   if (!variableName || typeof value !== 'string') return;
 
@@ -447,14 +477,15 @@ function initContentScript() {
         setTimeout(doFakeFill, 500);
       }
     });
-
-
     // Inject SweetAlert2 here
     injectSweetAlert2();
 
     // Create the UI first
     setupKeyboardShortcuts();
     await createTriggerOverlay();
+    
+    // Only enable user select if toggle is enabled
+    // But since loading is async, we wrap it and also check in enableUserSelect
     enableUserSelect();
 
     // Debug: Log after a delay to ensure everything is applied
@@ -666,75 +697,114 @@ function initContentScript() {
       let filledCount = 0;
 
       if (isGForm) {
-        // Handle Google Forms
+        // Handle Google Forms - with TRUE INSTANT selection (fill as soon as AI responds)
         const questions = document.querySelectorAll('div[role="listitem"]');
         updateProgressOverlay("Processing Google Form", `Found ${questions.length} questions`);
 
-        for (let i = 0; i < questions.length; i++) {
-          const q = questions[i];
-          const questionText = (q.querySelector('div[role="heading"]')?.textContent || '').trim();
+        // TRUE INSTANT MODE - Fill as soon as each AI response arrives, don't wait for all
+        console.log("🚀 Starting TRUE INSTANT AI Fill Mode (fill immediately per question)");
+        
+        // Step 1: Get all question texts
+        const questionData = Array.from(questions).map((q, i) => ({
+          index: i,
+          element: q,
+          text: (q.querySelector('div[role="heading"]')?.textContent || '').trim(),
+        })).filter(qd => qd.text);
 
-          if (!questionText) continue;
+        // Step 2: Create AI requests and attach filling logic to EACH one
+        // This is the key - we fill as soon as THAT SPECIFIC AI response arrives
+        const fillingPromises = questionData.map((qd, idx) =>
+          getAIMatchForField(qd.text, personalizedData)
+            .then(async (matchedData) => {
+              // This runs IMMEDIATELY when THIS question's AI response arrives
+              // Not waiting for other questions!
+              if (matchedData) {
+                updateProgressOverlay(
+                  `  Filling question ${idx + 1}/${questionData.length}`,
+                  qd.text
+                );
+                await fillGoogleFormQuestion(qd.element, matchedData);
+                filledCount++;
+                console.log(`✅ INSTANT Filled: ${qd.text}`);
+                return true;
+              } else {
+                console.log(`⏭️ Skipped (no match): ${qd.text}`);
+                return false;
+              }
+            })
+            .catch(e => {
+              console.error(`Error matching question ${qd.index}:`, e);
+              return false;
+            })
+        );
 
-          updateProgressOverlay(
-            `Processing question ${i + 1}/${questions.length}`,
-            questionText
-          );
-          updateProgressBar((i + 1) / questions.length);
-
-          // Get AI to determine which personal data matches this question
-          const matchedData = await getAIMatchForField(questionText, personalizedData);
-
-          if (matchedData) {
-            // Fill the field based on type
-            const textInput = q.querySelector('input[type="text"], textarea');
-            if (textInput) {
-              textInput.value = matchedData.value;
-              textInput.dispatchEvent(new Event('input', { bubbles: true }));
-              filledCount++;
-              updateProgressOverlay(
-                `Filled: ${questionText}`,
-                `Value: ${matchedData.value}`
-              );
-            }
-          }
+        // Step 3: Update progress bar as items complete
+        // This tracks completed items, not waiting for all
+        let completedCount = 0;
+        for (const promise of fillingPromises) {
+          promise.then(() => {
+            completedCount++;
+            updateProgressBar(completedCount / questionData.length);
+          });
         }
+
+        // Step 4: Wait for all to finish (but they're already filling!)
+        await Promise.all(fillingPromises);
       } else {
-        // Handle standard HTML forms
+        // Handle standard HTML forms - TRUE INSTANT MODE
         fields = document.querySelectorAll("input:not([type=hidden]), textarea, select");
         updateProgressOverlay("Processing Standard Form", `Found ${fields.length} fields`);
 
-        for (let i = 0; i < fields.length; i++) {
-          const field = fields[i];
+        // TRUE INSTANT MODE - Fill as soon as each AI response arrives
+        console.log("🚀 Starting TRUE INSTANT AI Fill Mode for standard forms");
+        
+        // Filter and prepare field data
+        const fieldData = Array.from(fields)
+          .map((field, i) => ({
+            index: i,
+            field: field,
+            context: getFieldContext(field),
+          }))
+          .filter(fd => fd.context.trim() && (!fd.field.value || fd.field.type === 'radio' || fd.field.type === 'checkbox'));
 
-          // Skip already filled fields
-          if (field.value && field.type !== 'radio' && field.type !== 'checkbox') continue;
+        // Create filling promises that execute as soon as each AI response arrives
+        const fillingPromises = fieldData.map((fd, idx) =>
+          getAIMatchForField(fd.context, personalizedData)
+            .then((matchedData) => {
+              // This runs IMMEDIATELY when THIS field's AI response arrives
+              if (matchedData) {
+                updateProgressOverlay(
+                  `  Filling field ${idx + 1}/${fieldData.length}`,
+                  fd.context
+                );
+                fd.field.value = matchedData.value;
+                filledCount++;
+                fd.field.dispatchEvent(new Event("input", { bubbles: true }));
+                fd.field.dispatchEvent(new Event("change", { bubbles: true }));
+                console.log(`✅ INSTANT Filled: ${fd.context}`);
+                return true;
+              } else {
+                console.log(`⏭️ Skipped (no match): ${fd.context}`);
+                return false;
+              }
+            })
+            .catch(e => {
+              console.error(`Error matching field ${fd.index}:`, e);
+              return false;
+            })
+        );
 
-          // Get field context
-          const fieldContext = getFieldContext(field);
-
-          if (!fieldContext.trim()) continue;
-
-          updateProgressOverlay(
-            `Processing field ${i + 1}/${fields.length}`,
-            fieldContext
-          );
-          updateProgressBar((i + 1) / fields.length);
-
-          // Get AI to determine which personal data matches this field
-          const matchedData = await getAIMatchForField(fieldContext, personalizedData);
-
-          if (matchedData) {
-            field.value = matchedData.value;
-            filledCount++;
-            field.dispatchEvent(new Event("input", { bubbles: true }));
-            field.dispatchEvent(new Event("change", { bubbles: true }));
-            updateProgressOverlay(
-              `Filled: ${fieldContext}`,
-              `Value: ${matchedData.value}`
-            );
-          }
+        // Update progress as items complete
+        let completedCount = 0;
+        for (const promise of fillingPromises) {
+          promise.then(() => {
+            completedCount++;
+            updateProgressBar(completedCount / fieldData.length);
+          });
         }
+
+        // Wait for all to finish
+        await Promise.all(fillingPromises);
       }
 
       updateProgressOverlay(
@@ -826,6 +896,87 @@ function initContentScript() {
   /**
    * Get field context from HTML element
    */
+  /**
+   * Fill a Google Form question with the matched data
+   * Handles text inputs, multiple choice, checkboxes, and dropdowns
+   */
+  async function fillGoogleFormQuestion(questionElement, matchedData) {
+    try {
+      // 1. Try text input/textarea
+      const textInput = questionElement.querySelector('input[type="text"], textarea');
+      if (textInput) {
+        textInput.value = matchedData.value;
+        textInput.dispatchEvent(new Event('input', { bubbles: true }));
+        textInput.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+
+      // 2. Try radio buttons (single choice)
+      const radioChoices = Array.from(questionElement.querySelectorAll('div[role="radio"]'));
+      if (radioChoices.length > 0) {
+        // Try to find matching choice based on value/text similarity
+        const matchValue = matchedData.value.toLowerCase();
+        const matchingChoice = radioChoices.find(choice => 
+          choice.textContent.toLowerCase().includes(matchValue)
+        );
+        
+        if (matchingChoice) {
+          matchingChoice.click();
+          await new Promise(resolve => setTimeout(resolve, 100));
+          return true;
+        } else {
+          // If no match, pick randomly (or first one)
+          radioChoices[0]?.click();
+          await new Promise(resolve => setTimeout(resolve, 100));
+          return true;
+        }
+      }
+
+      // 3. Try checkboxes (multiple choice)
+      const checkboxChoices = Array.from(questionElement.querySelectorAll('div[role="checkbox"]'));
+      if (checkboxChoices.length > 0) {
+        const matchValue = matchedData.value.toLowerCase();
+        for (const checkbox of checkboxChoices) {
+          if (checkbox.textContent.toLowerCase().includes(matchValue)) {
+            checkbox.click();
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+        }
+        return true;
+      }
+
+      // 4. Try dropdown
+      const dropdown = questionElement.querySelector('div[role="listbox"]');
+      if (dropdown) {
+        dropdown.click();
+        await new Promise(resolve => setTimeout(resolve, 150));
+        
+        const options = Array.from(document.querySelectorAll('div[role="option"][data-value]'));
+        const matchValue = matchedData.value.toLowerCase();
+        const matchingOption = options.find(opt => 
+          opt.textContent.toLowerCase().includes(matchValue)
+        );
+        
+        if (matchingOption) {
+          matchingOption.click();
+          await new Promise(resolve => setTimeout(resolve, 100));
+          return true;
+        } else if (options.length > 0) {
+          options[0]?.click();
+          await new Promise(resolve => setTimeout(resolve, 100));
+          return true;
+        }
+      }
+
+      console.warn(`Could not fill question - no suitable field type found`);
+      return false;
+
+    } catch (error) {
+      console.error("Error filling Google Form question:", error);
+      return false;
+    }
+  }
+
   function getFieldContext(field) {
     const metadata = [
       field.name,
@@ -1509,7 +1660,7 @@ Response (number only or "NONE"):`;
     console.groupEnd();
     
     // 6. Check if our styles were applied
-    console.group('✨ Our Applied Styles');
+    console.group('  Our Applied Styles');
     const ourStyle = document.querySelector('#enable-user-select-style');
     if (ourStyle) {
       console.log('✅ Our custom style injected');
@@ -1608,6 +1759,14 @@ Response (number only or "NONE"):`;
   }
 
   function enableUserSelect() {
+    // Check if force selectable is enabled
+    if (!forceSelectableEnabled) {
+      console.log("[Selection] Force Selectable is DISABLED - NOT applying text selection globally");
+      return;
+    }
+    
+    console.log("[Selection] Force Selectable is ENABLED - applying text selection globally");
+    
     // 1. Inject comprehensive CSS to enable selection everywhere
     const style = document.createElement("style");
     style.id = "enable-user-select-style";
@@ -1662,15 +1821,88 @@ Response (number only or "NONE"):`;
       }, true);
     });
 
-    // Also intercept preventDefault on events
+    // Also intercept preventDefault on events to stop page scripts from blocking
+    // selection and common keyboard shortcuts (F12, Ctrl+C/V/X/U/S/P, Ctrl+Shift+I/J/C)
     const originalPreventDefault = Event.prototype.preventDefault;
     Event.prototype.preventDefault = function() {
-      if (['selectstart', 'copy', 'cut', 'paste', 'contextmenu'].includes(this.type)) {
-        console.debug(`[Selection] Blocked prevent on ${this.type}`);
-        return; // Don't prevent for selection events
+      try {
+        const t = this.type;
+
+        // Allow selection-related events by ignoring attempts to preventDefault
+        const selectionEvents = ['selectstart', 'copy', 'cut', 'paste', 'contextmenu'];
+        if (selectionEvents.includes(t)) {
+          console.debug(`[Selection] Blocked prevent on ${t}`);
+          return; // Don't allow page scripts to prevent selection/contextmenu/clipboard actions
+        }
+
+        // For keyboard events, allow browser shortcuts that we want to enable
+        if (t === 'keydown' || t === 'keypress' || t === 'keyup') {
+          const kc = this.keyCode || this.which || 0;
+          const key = (this.key || '').toLowerCase();
+          const ctrl = !!this.ctrlKey || !!this.metaKey; // include meta for Mac
+          const shift = !!this.shiftKey;
+
+          // F12
+          if (kc === 123 || key === 'f12') {
+            console.debug('[Selection] Blocked prevent on F12');
+            return;
+          }
+
+          // Ctrl/Cmd + C/V/X/U/S/P
+          const ctrlAllowed = [67, 86, 88, 85, 83, 80]; // C, V, X, U, S, P
+          if (ctrl && ctrlAllowed.includes(kc)) {
+            console.debug('[Selection] Blocked prevent on Ctrl/Cmd + key', kc, key);
+            return;
+          }
+
+          // Ctrl+Shift combos commonly blocked: Ctrl+Shift+I/J/C
+          if (ctrl && shift && [73, 74, 67].includes(kc)) {
+            console.debug('[Selection] Blocked prevent on Ctrl+Shift combo', kc, key);
+            return;
+          }
+        }
+      } catch (e) {
+        // ignore
       }
       return originalPreventDefault.call(this);
     };
+
+    // 2.b Add capturing keyboard listeners to prevent page handlers from intercepting
+    // and blocking DevTools / clipboard / context menu shortcuts.
+    const allowShortcut = (e) => {
+      const kc = e.keyCode || e.which || 0;
+      const key = (e.key || '').toLowerCase();
+      const ctrl = !!e.ctrlKey || !!e.metaKey;
+      const shift = !!e.shiftKey;
+
+      // F12
+      if (kc === 123 || key === 'f12') return true;
+
+      // Ctrl/Cmd shortcuts we want to allow
+      const ctrlAllowed = [67, 86, 88, 85, 83, 80]; // C, V, X, U, S, P
+      if (ctrl && ctrlAllowed.includes(kc)) return true;
+
+      // Ctrl+Shift combos (I, J, C)
+      if (ctrl && shift && [73, 74, 67].includes(kc)) return true;
+
+      return false;
+    };
+
+    const keyboardInterceptor = (e) => {
+      try {
+        if (allowShortcut(e)) {
+          // Stop other page handlers from intercepting these keys
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          // Do NOT call preventDefault here so browser can execute the default action
+        }
+      } catch (err) {
+        // noop
+      }
+    };
+
+    document.addEventListener('keydown', keyboardInterceptor, true);
+    document.addEventListener('keyup', keyboardInterceptor, true);
 
     // 3. Nullify inline event handlers on document and body
     const eventHandlers = ['oncontextmenu', 'onselectstart', 'ondragstart', 'oncopy', 'oncut', 'onpaste', 'onmousedown', 'onmouseup', 'ondrag', 'ondragend'];
@@ -3112,15 +3344,38 @@ Response (number only or "NONE"):`;
     smartFillSession.totalSteps = allQuestions.length;
     console.log(`Found ${allQuestions.length} questions using custom profile.`);
 
+    // SEQUENTIAL MODE - Process questions one by one to avoid rate limiting (429)
+    console.log("🚀 Starting SEQUENTIAL FILL MODE - AI processes questions one by one to avoid rate limit");
+
+    // Process each question sequentially (not in parallel)
     for (let i = 0; i < allQuestions.length; i++) {
       if (smartFillSession?.stopRequested) {
-        console.log("Smart fill stopped by user during question iteration.");
+        console.log("Smart fill stopped by user.");
         break;
       }
+
       const questionElement = allQuestions[i];
-      await processSingleCustomProfileQuestion(questionElement, profile, i + 1, allQuestions.length, proposedAnswers);
-      // Add a small delay to avoid overwhelming the page or the AI
-      await new Promise(resolve => setTimeout(resolve, 500));
+      try {
+        await processSingleCustomProfileQuestion(questionElement, profile, i + 1, allQuestions.length, proposedAnswers);
+        
+        // Update progress after each question completes
+        smartFillSession.completedSteps = i + 1;
+        updateProgressBar((i + 1) / allQuestions.length);
+        
+        // Small delay between requests to be rate-limit friendly
+        if (i < allQuestions.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      } catch (error) {
+        console.error(`Error processing question ${i + 1}:`, error);
+        finalizeHistoryEntry("error", smartFillSession?.currentEntry?.answer || "");
+        // Continue with next question even if one fails
+      }
+    }
+
+    if (smartFillSession?.stopRequested) {
+      console.log("Smart fill stopped by user during question processing.");
+      return;
     }
 
     console.log("Custom profile smart fill data gathering completed.");
@@ -3192,13 +3447,13 @@ Response (number only or "NONE"):`;
         const prompt = `${basePrompt}\n\nRespond with only the answer text.`;
         updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
-        proposedAnswers.push({
-          question: fullQuestionText,
-          suggestedAnswer: aiAnswer,
-          element: detectedAnswerField.element,
-          type: 'text_input',
-          platform: 'custom'
-        });
+        console.log(`  [INSTANT FILL] Q${index}: AI response arrived, filling IMMEDIATELY`);
+        //   INSTANT FILL - Apply immediately when AI responds
+        detectedAnswerField.element.value = aiAnswer;
+        detectedAnswerField.element.dispatchEvent(new Event('input', { bubbles: true }));
+        detectedAnswerField.element.dispatchEvent(new Event('change', { bubbles: true }));
+        updateProgressOverlay(`  Filled: Question ${index}/${total}`, aiAnswer);
+        finalizeHistoryEntry("answered", aiAnswer);
       } else if (detectedAnswerField.type === 'multiple_choice' || detectedAnswerField.type === 'checkbox_group') {
         const options = [];
         for (const el of detectedAnswerField.elements) {
@@ -3233,18 +3488,15 @@ Response (number only or "NONE"):`;
         const prompt = `${basePrompt}\nOptions: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct answer? Respond with only the exact text of the best option.`;
         updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
-        console.log("AI Answer received:", aiAnswer);
+        console.log(`  [INSTANT FILL] Q${index}: AI response arrived, filling IMMEDIATELY`);
         updateProgressOverlay("Matching AI response...", aiAnswer);
 
         const target = matchOption(options, aiAnswer);
         if (target) {
-          proposedAnswers.push({
-            question: fullQuestionText,
-            suggestedAnswer: target.label,
-            element: target.element,
-            type: detectedAnswerField.type,
-            platform: 'custom'
-          });
+          //   INSTANT FILL - Click immediately when AI responds
+          target.element.click();
+          updateProgressOverlay(`  Filled: Question ${index}/${total}`, target.label);
+          finalizeHistoryEntry("answered", target.label);
         } else {
           finalizeHistoryEntry("no match", aiAnswer);
         }
@@ -3252,13 +3504,14 @@ Response (number only or "NONE"):`;
         const prompt = `Based on the question "${fullQuestionText}", should the checkbox be checked? Respond with only "YES" or "NO".`;
         updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
-        proposedAnswers.push({
-          question: fullQuestionText,
-          suggestedAnswer: aiAnswer.toLowerCase() === 'yes' ? 'YES' : 'NO',
-          element: detectedAnswerField.element,
-          type: 'single_checkbox',
-          platform: 'custom'
-        });
+        console.log(`  [INSTANT FILL] Q${index}: AI response arrived, filling IMMEDIATELY`);
+        //   INSTANT FILL - Apply immediately when AI responds
+        if (aiAnswer.toLowerCase() === 'yes') {
+          detectedAnswerField.element.checked = true;
+          detectedAnswerField.element.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        updateProgressOverlay(`  Filled: Question ${index}/${total}`, aiAnswer);
+        finalizeHistoryEntry("answered", aiAnswer);
       } else if (detectedAnswerField.type === 'dropdown') {
         const selectElement = detectedAnswerField.element;
         const options = Array.from(selectElement.options).map(opt => ({ element: opt, label: opt.textContent }));
@@ -3276,18 +3529,16 @@ Response (number only or "NONE"):`;
         const prompt = `${basePrompt}\nDropdown Options: [${options.map(opt => opt.label).join(", ")}]\n\nFrom the options, which is the most likely correct option? Respond with only the exact text of the best option.`;
         updateProgressOverlay("Consulting AI provider...", fullQuestionText);
         aiAnswer = await getAiResponse(prompt);
-        console.log("AI Answer received:", aiAnswer);
+        console.log(`  [INSTANT FILL] Q${index}: AI response arrived, filling IMMEDIATELY`);
         updateProgressOverlay("Matching AI response...", aiAnswer);
 
         const target = options.find(opt => normalizeQuizText(opt.label) === normalizeQuizText(aiAnswer));
         if (target) {
-          proposedAnswers.push({
-            question: fullQuestionText,
-            suggestedAnswer: target.element.value, // For dropdowns, the value is what we set
-            element: selectElement,
-            type: 'dropdown',
-            platform: 'custom'
-          });
+          //   INSTANT FILL - Apply immediately when AI responds
+          selectElement.value = target.element.value;
+          selectElement.dispatchEvent(new Event('change', { bubbles: true }));
+          updateProgressOverlay(`  Filled: Question ${index}/${total}`, target.label);
+          finalizeHistoryEntry("answered", target.element.value);
         } else {
           finalizeHistoryEntry("no match (dropdown)", aiAnswer);
         }
@@ -4058,6 +4309,16 @@ Response (number only or "NONE"):`;
    * Applies aggressive CSS and JS to override any protection
    */
   function forceElementSelectable(element) {
+    // Check if force selectable is enabled
+    console.log("[Content.js] forceElementSelectable called - enabled:", forceSelectableEnabled, "element:", element?.tagName);
+    
+    if (!forceSelectableEnabled) {
+      console.log("[Content.js] ❌ Force Selectable is DISABLED, skipping element");
+      return;
+    }
+    
+    console.log("[Content.js] ✅ Force Selectable is ENABLED, applying styles");
+    
     if (!element) return;
     
     try {
@@ -4105,6 +4366,12 @@ Response (number only or "NONE"):`;
    * Ensures children added later are also selectable
    */
   function forceElementSelectableWithMonitoring(element) {
+    // Check if force selectable is enabled
+    if (!forceSelectableEnabled) {
+      console.log("[Content.js] Force Selectable is disabled, skipping monitoring");
+      return;
+    }
+    
     forceElementSelectable(element);
     
     // Watch for changes in this specific element
