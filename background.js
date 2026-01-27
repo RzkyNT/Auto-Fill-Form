@@ -59,6 +59,9 @@ async function getDeviceIdentifier() {
   if (!deviceIdentifier) {
     deviceIdentifier = generateUuid();
     await chrome.storage.local.set({ deviceIdentifier: deviceIdentifier });
+    console.log(`BG: Generated new deviceIdentifier: ${deviceIdentifier}`);
+  } else {
+    console.log(`BG: Retrieved existing deviceIdentifier: ${deviceIdentifier}`);
   }
   return deviceIdentifier;
 }
@@ -438,7 +441,7 @@ async function verifyActivationWithBackend() {
   try {
     const response = await fetch(ACTIVATION_SERVER_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'status',
         activationKey: activationKey,
@@ -498,12 +501,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const { activationKey } = request;
       const deviceIdentifier = await getDeviceIdentifier();
       console.log("BG: Menerima permintaan activateExtension.");
+      console.log(`BG: activateExtension - Attempting activation with key=${activationKey}, deviceIdentifier=${deviceIdentifier}`);
 
       try {
         const fetchOptions = {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'text/plain',
           },
           body: JSON.stringify({
             activationKey: activationKey,
@@ -568,40 +572,53 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'deactivateExtension') {
     (async () => {
       console.log("BG: Menerima permintaan deactivateExtension.");
+      let deactivationResult = { success: false, message: "Unknown deactivation error." };
+      const isTransferDeactivation = request.isTransfer === true; // Check for the flag
 
-      const { deviceIdentifier, activationKey } = await chrome.storage.local.get(["deviceIdentifier", "activationKey"]);
-
-      if (!deviceIdentifier || !activationKey) {
-        console.error("BG: Deactivation failed: Missing deviceIdentifier or activationKey.");
-        await chrome.storage.local.remove(["activationKey", "licenseDetails"]);
-        return;
+      // Items to clear from local storage
+      const itemsToClear = ["activationKey", "licenseDetails", LAST_ACTIVATION_RESPONSE_KEY, LICENSE_CACHE_KEY];
+      if (!isTransferDeactivation) {
+        itemsToClear.push("deviceIdentifier"); // Only remove deviceIdentifier if not a transfer
       }
 
+      const { deviceIdentifier, activationKey } = await chrome.storage.local.get(["deviceIdentifier", "activationKey"]);
+      console.log(`BG: deactivateExtension - Retrieved: activationKey=${activationKey}, deviceIdentifier=${deviceIdentifier}, isTransfer=${isTransferDeactivation}`);
+
       try {
-        await fetch(ACTIVATION_SERVER_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'deactivate',
-            activationKey: activationKey,
-            deviceIdentifier: deviceIdentifier,
-          }),
-          redirect: 'follow'
-        });
-        console.log("BG: Deactivation request sent to the server.");
+        if (!deviceIdentifier || !activationKey) {
+          console.warn("BG: Deactivation failed: Missing deviceIdentifier or activationKey in local storage. Performing local cleanup.");
+          deactivationResult = { success: true, message: "Extension locally deactivated (keys were already missing)." };
+        } else {
+          // Both deviceIdentifier and activationKey are present, proceed with backend call
+          const response = await fetch(ACTIVATION_SERVER_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain',
+            },
+            body: JSON.stringify({
+              action: 'deactivate',
+              activationKey: activationKey,
+              deviceIdentifier: deviceIdentifier,
+            }),
+            redirect: 'follow'
+          });
+
+          if (response.ok) {
+            console.log("BG: Deactivation request sent to the server successfully.");
+            deactivationResult = { success: true, message: "Deactivation successful." };
+          } else {
+            const responseText = await response.text();
+            console.error(`BG: Server responded with error during deactivation: ${response.status} - ${responseText}`);
+            deactivationResult = { success: false, message: `Server deactivation failed: ${response.status} - ${responseText}` };
+          }
+        }
       } catch (error) {
-        console.error("BG: Error sending deactivation request to the server:", error);
+        console.error("BG: Error during deactivation process:", error);
+        deactivationResult = { success: false, message: `Network error during deactivation: ${error.message}` };
       } finally {
-        // Invalidate the cache on deactivation
-        await chrome.storage.local.remove([
-          "activationKey",
-          "licenseDetails",
-          LAST_ACTIVATION_RESPONSE_KEY,
-          LICENSE_CACHE_KEY
-        ]);
-        console.log("BG: Data aktivasi dihapus dari penyimpanan lokal.");
+        await chrome.storage.local.remove(itemsToClear);
+        console.log(`BG: Data aktivasi dihapus dari penyimpanan lokal. Items removed: ${itemsToClear.join(', ')}.`);
+        sendResponse(deactivationResult);
       }
     })();
     return true;

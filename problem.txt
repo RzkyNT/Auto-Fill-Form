@@ -1,0 +1,197 @@
+background.js:47 Background service worker started.
+background.js:64 BG: Retrieved existing deviceIdentifier: bb1860a7-f94e-4144-840b-0e0f3ea31a26
+background.js:814 Update checker: Cooldown period active. Skipping update check.
+background.js:814 Update checker: Cooldown period active. Skipping update check.
+background.js:433 BG: Verifying activation status with backend...
+background.js:437 BG: Verification failed: Missing activationKey or deviceIdentifier in local storage.
+background.js:814 Update checker: Cooldown period active. Skipping update check.
+background.js:433 BG: Verifying activation status with backend...
+background.js:437 BG: Verification failed: Missing activationKey or deviceIdentifier in local storage.
+background.js:62 BG: Generated new deviceIdentifier: a482f25f-0ce9-42b7-95cb-3a35f9661dc2
+background.js:503 BG: Menerima permintaan activateExtension.
+background.js:504 BG: activateExtension - Attempting activation with key=ADMIN, deviceIdentifier=a482f25f-0ce9-42b7-95cb-3a35f9661dc2
+background.js:85 DEBUG BG: verifyBackendSignature called.
+background.js:86 DEBUG BG: Shared Secret used: "SMK-TARUNA-BANGSA-EKSTENSI-RZKYNT-2025"
+background.js:87 DEBUG BG: Signature received: "011fbdd935baa278fae161e943c7ca5ed6e35ad4967adf8b2bfe84f8db30cf83"
+background.js:88 DEBUG BG: Canonical Data to sign: "{"licenseDetails":"Full","message":"Extension activated successfully!","status":"success"}"
+background.js:123 DEBUG BG: Backend signature successfully verified.
+background.js:554 BG: Aktivasi berhasil. Kunci disimpan. Lisensi: Full
+background.js:814 Update checker: Cooldown period active. Skipping update check.
+background.js:433 BG: Verifying activation status with backend...
+background.js:457 BG: Verification successful. License: Full
+background.js:814 Update checker: Cooldown period active. Skipping update check.
+background.js:814 Update checker: Cooldown period active. Skipping update check.
+background.js:429 BG: Returning activation status from cache.
+background.js:814 Update checker: Cooldown period active. Skipping update check.
+background.js:429 BG: Returning activation status from cache.
+background.js:814 Update checker: Cooldown period active. Skipping update check.
+background.js:429 BG: Returning activation status from cache.
+background.js:814 Update checker: Cooldown period active. Skipping update check.
+background.js:429 BG: Returning activation status from cache.
+background.js:652 --- Background: Received request to call Chat API ---
+background.js:230 --- [DEBUG] callGemini: START ---
+background.js:231 --- [DEBUG] callGemini: Processing request for Chat AI ---
+background.js:240 --- [DEBUG] callGemini: 12 keys available. Shuffling...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ...NfmQ
+background.js:288 --- [DEBUG] callGemini: API Error for key ...NfmQ. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ...GhEM
+background.js:146 Background: Putting key ending in ...NfmQ on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143
+background.js:288 --- [DEBUG] callGemini: API Error for key ...GhEM. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ...WNAY
+background.js:146 Background: Putting key ending in ...GhEM on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143
+background.js:288 --- [DEBUG] callGemini: API Error for key ...WNAY. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ...hge0
+background.js:146 Background: Putting key ending in ...WNAY on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143
+background.js:288 --- [DEBUG] callGemini: API Error for key ...hge0. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ...uPj8
+background.js:146 Background: Putting key ending in ...hge0 on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143
+background.js:288 --- [DEBUG] callGemini: API Error for key ...uPj8. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ...lN60
+background.js:146 Background: Putting key ending in ...uPj8 on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143
+background.js:288 --- [DEBUG] callGemini: API Error for key ...lN60. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ...Lcf0
+background.js:146 Background: Putting key ending in ...lN60 on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143
+background.js:288 --- [DEBUG] callGemini: API Error for key ...Lcf0. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ...snIw
+background.js:146 Background: Putting key ending in ...Lcf0 on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143
+background.js:288 --- [DEBUG] callGemini: API Error for key ...snIw. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ..._HQ4
+background.js:146 Background: Putting key ending in ...snIw on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143
+background.js:288 --- [DEBUG] callGemini: API Error for key ..._HQ4. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ...KTxs
+background.js:146 Background: Putting key ending in ..._HQ4 on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143
+background.js:288 --- [DEBUG] callGemini: API Error for key ...KTxs. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ...TMMs
+background.js:146 Background: Putting key ending in ...KTxs on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143
+background.js:288 --- [DEBUG] callGemini: API Error for key ...TMMs. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:254 --- [DEBUG] callGemini: Trying key ending in ...lb7I
+background.js:146 Background: Putting key ending in ...TMMs on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143
+background.js:288 --- [DEBUG] callGemini: API Error for key ...lb7I. Status: 403. {error: {…}}
+callGemini @ background.js:288
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:289 --- [DEBUG] Gemini API Error details: {error: {…}}
+background.js:290 --- [DEBUG] callGemini: Trying next key...
+background.js:317 --- [DEBUG] callGemini:All keys failed. ---
+callGemini @ background.js:317
+await in callGemini
+callAiApiInternal @ background.js:664
+(anonymous) @ background.js:654
+await in (anonymous)
+(anonymous) @ background.js:655
+background.js:146 Background: Putting key ending in ...lb7I on cooldown.
+(anonymous) @ background.js:146
+(anonymous) @ background.js:143

@@ -55,6 +55,7 @@ const displayLicenseDetails = document.getElementById("display-license-details")
 const deactivateExtensionButton = document.getElementById("deactivate-extension");
 
 const LAST_ACTIVATION_RESPONSE_KEY = "lastActivationResponse";
+const LICENSE_CACHE_KEY = "licenseCache"; // Defined here
 
 // View Elements
 const mainView = document.getElementById('main-view');
@@ -237,7 +238,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
     if (result.apiKeys && Array.isArray(result.apiKeys)) {
-      apiKeysTextarea.value = result.apiKeys.map(item => item.key).join('\n');
+      const keysToDisplay = result.apiKeys.map(item => item.key).join('\n');
+      apiKeysTextarea.value = keysToDisplay;
+      console.log("Popup: Value set to apiKeysTextarea:", keysToDisplay);
     }
 
     const provider = result.aiProvider || "gemini";
@@ -640,7 +643,7 @@ activateExtensionButton.addEventListener("click", async () => {
 
         if (lastActivationResponse && Object.keys(lastActivationResponse).length > 0) {
           console.log("Popup: Processing stored activation response:", lastActivationResponse);
-          processActivationResponse(lastActivationResponse);
+          processActivationResponse(lastActivationResponse, activationKey); // Pass activationKey
           await chrome.storage.local.remove(LAST_ACTIVATION_RESPONSE_KEY);
         } else {
           console.error("Popup: Error: chrome.runtime.lastError, AND NO STORED ACTIVATION RESPONSE FOUND IN LOCAL STORAGE.");
@@ -659,7 +662,7 @@ activateExtensionButton.addEventListener("click", async () => {
       }
 
       // ---- SUCCESS CASE (no runtime error) ----
-      processActivationResponse(response);
+      processActivationResponse(response, activationKey); // Pass the activationKey
       activateExtensionButton.disabled = false;
     }
   ); // ← ini penting!
@@ -695,8 +698,53 @@ deactivateExtensionButton.addEventListener("click", async () => {
   }
 });
 
+// Clear Local Activation Data button listener
+document.getElementById("clear-local-activation").addEventListener("click", async () => {
+  const confirmClear = await Swal.fire({
+    title: 'Are you sure?',
+    text: 'This will clear all activation data from your local storage. You will need to re-enter your key to activate. Continue?',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, clear it!',
+    cancelButtonText: 'No, cancel',
+    background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+    color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+  });
+  if (confirmClear.isConfirmed) {
+    try {
+      await chrome.storage.local.remove([
+        "activationKey",
+        "deviceIdentifier",
+        LAST_ACTIVATION_RESPONSE_KEY,
+        LICENSE_CACHE_KEY
+      ]);
+      if (chrome.runtime.lastError) {
+        throw new Error(chrome.runtime.lastError.message);
+      }
+      Swal.fire({
+        title: 'Cleared!',
+        text: 'Local activation data has been cleared. The popup will now reload.',
+        icon: 'success',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      }).then(() => {
+        location.reload(); // Reload to reflect the new state
+      });
+    } catch (error) {
+      console.error("Popup: Error clearing local activation data:", error);
+      Swal.fire({
+        title: 'Error!',
+        text: `Failed to clear local data: ${error.message}. Please check console.`,
+        icon: 'error',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+    }
+  }
+});
+
 // New helper function to process activation response and update UI
-function processActivationResponse(response) {
+async function processActivationResponse(response, activationKeyAttempt = null) { // Added activationKeyAttempt parameter
   if (response.success) {
     Swal.fire({
       title: 'Success!',
@@ -708,15 +756,85 @@ function processActivationResponse(response) {
       location.reload(); // Reload to reflect the new state fetched from backend
     });
   } else {
-    renderPopupUI(false, null); // Keep this for immediate feedback on failure
-    activationStatusDiv.innerHTML = `<span style="color: #ff6b7a;">Activation Failed: ${response.message || 'Invalid key or server error.'}</span>`;
-    Swal.fire({
-      title: 'Activation Failed',
-      text: response.message || 'Invalid key or server error.',
-      icon: 'error',
-      background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
-      color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
-    });
+    // Specific handling for "Device already activated with another key"
+    if (response.message && response.message.includes("Device already activated with another key.")) {
+      const confirmTransfer = await Swal.fire({
+        title: 'Activation Conflict',
+        html: `This device is already activated with a different key. Do you want to deactivate the old key and activate with the new key you provided?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, transfer activation!',
+        cancelButtonText: 'No, keep current activation',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+
+      if (confirmTransfer.isConfirmed) {
+        // Step 1: Deactivate the current key
+        activationStatusDiv.innerHTML = `Deactivating old key...`;
+        const deactivateResponse = await chrome.runtime.sendMessage({ action: 'deactivateExtension', isTransfer: true });
+
+        if (deactivateResponse && deactivateResponse.success) {
+          console.log("Popup: Old key successfully deactivated (or missing). Proceeding with new activation.");
+          // Wait a bit to ensure local storage is cleared and backend processes deactivation
+          await new Promise(resolve => setTimeout(resolve, 500)); // Reduced timeout as local cleanup is now immediate
+          
+          // Step 2: Re-attempt activation with the new key
+          activationStatusDiv.innerHTML = `Re-activating with new key...`;
+          chrome.runtime.sendMessage(
+            {
+              action: 'activateExtension',
+              activationKey: activationKeyAttempt // Use the key from the initial attempt
+            },
+            async (retryResponse) => {
+              if (chrome.runtime.lastError) {
+                console.warn("Popup: Message port closed during re-activation. Retrieving result from local storage...");
+                await new Promise(resolve => setTimeout(resolve, 150));
+                const { lastActivationResponse } = await chrome.storage.local.get(LAST_ACTIVATION_RESPONSE_KEY);
+                processActivationResponse(lastActivationResponse, activationKeyAttempt); // Pass activationKeyAttempt
+                await chrome.storage.local.remove(LAST_ACTIVATION_RESPONSE_KEY);
+              } else {
+                processActivationResponse(retryResponse, activationKeyAttempt); // Pass activationKeyAttempt
+              }
+            }
+          );
+        } else {
+          // Deactivation failed, inform user and stop
+          Swal.fire({
+            title: 'Deactivation Failed',
+            text: deactivateResponse?.message || 'Could not deactivate the old key. Please try again.',
+            icon: 'error',
+            background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+            color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+          });
+          activationStatusDiv.innerHTML = `<span style="color: #ff6b7a;">Deactivation Failed.</span>`;
+          // It is important to reset the button state if deactivation fails
+          activateExtensionButton.disabled = false; 
+          return; // Stop here
+        }
+      } else {
+        renderPopupUI(false, null);
+        activationStatusDiv.innerHTML = `<span style="color: #ff6b7a;">Activation Failed: ${response.message || 'Invalid key or server error.'}</span>`;
+        Swal.fire({
+          title: 'Activation Failed',
+          text: response.message || 'Invalid key or server error.',
+          icon: 'error',
+          background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+          color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+        });
+      }
+    } else {
+      // Original error handling for other activation failures
+      renderPopupUI(false, null); // Keep this for immediate feedback on failure
+      activationStatusDiv.innerHTML = `<span style="color: #ff6b7a;">Activation Failed: ${response.message || 'Invalid key or server error.'}</span>`;
+      Swal.fire({
+        title: 'Activation Failed',
+        text: response.message || 'Invalid key or server error.',
+        icon: 'error',
+        background: darkModeToggle.checked ? '#0B0F14' : '#ffffff',
+        color: darkModeToggle.checked ? '#F2F4F6' : '#2b2b2b'
+      });
+    }
   }
 }
 manageProfilesButton.addEventListener('click', () => {

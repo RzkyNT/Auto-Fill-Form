@@ -796,6 +796,60 @@
     #force-selectable-toggle.active::after {
       left: 26px !important;
     }
+    /* Compact profile-actions layout */
+    .profiles-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .profiles-actions .row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .profiles-actions .row.small-gap {
+      gap: 8px;
+    }
+
+    .profiles-actions .button-primary {
+      width: auto;
+      padding: 10px 12px;
+      min-width: 140px;
+    }
+
+    .profiles-actions .button-primary.compact {
+      padding: 8px 10px;
+      min-width: 120px;
+      font-size: 0.95em;
+    }
+
+    .profiles-actions .button-primary.outline {
+      background: transparent;
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+      box-shadow: none;
+    }
+
+    .profiles-actions .button-primary.neutral {
+      background: transparent;
+      color: var(--color-muted);
+      border: 1px solid var(--color-border);
+      padding: 8px 10px;
+      box-shadow: none;
+    }
+
+    @media (max-width: 420px) {
+      .profiles-actions .row {
+        flex-direction: column;
+      }
+
+      .profiles-actions .button-primary {
+        width: 100%;
+        min-width: 0;
+      }
+    }
   </style>
 </head>
 
@@ -837,6 +891,7 @@
         <input id="activation-key-input" class="api-key-input" type="text" placeholder="Enter activation key here" />
         <button id="activate-extension" class="save-button">Activate Extension</button>
         <div id="activation-status" style="margin-top: 10px; font-size: 0.9em;"></div>
+      <button id="clear-local-activation" class="history-clear" style="margin-top: 5px;">Clear Local Activation Data</button>
       </div>
     </div>
 
@@ -1179,29 +1234,22 @@
       <ul id="profiles-list" class="profiles-list">
         <!-- Profiles will be dynamically inserted here -->
       </ul>
-      <button id="add-new-profile" class="button-primary">Add New Profile</button>
-      <button id="open-test-profile" class="button-primary">Open Profile Test Page</button>
+      <div class="profiles-actions">
+        <div class="row">
+          <button id="add-new-profile" class="button-primary">Add New Profile</button>
+          <button id="open-test-profile" class="button-primary outline">Open Profile Test Page</button>
+        </div>
 
-      <!-- Export Options -->
-      <div style="display: flex; gap: 10px; margin-top: 20px;">
-        <button id="export-profiles" class="button-primary" style="flex: 1;">
-          Export to File
-        </button>
-        <label for="import-file-input" class="button-primary"
-          style="flex: 1; text-align: center; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 0;">
-          Import from File
-        </label>
-        <input type="file" id="import-file-input" accept=".json" style="display: none;">
-      </div>
+        <div class="row">
+          <button id="export-profiles" class="button-primary compact">Export to File</button>
+          <label for="import-file-input" class="button-primary compact" role="button">Import from File</label>
+          <input type="file" id="import-file-input" accept=".json" style="display: none;">
+        </div>
 
-      <!-- Import Options -->
-      <div style="display: flex; gap: 10px; margin-top: 10px;">
-        <button id="copy-profiles-clipboard" class="button-primary" style="flex: 1;">
-          Export Profiles via Copy
-        </button>
-        <button id="toggle-paste-profiles" class="button-primary" style="flex: 1;">
-          Import Profiles via Paste
-        </button>
+        <div class="row small-gap">
+          <button id="copy-profiles-clipboard" class="button-primary neutral">Export via Copy</button>
+          <button id="toggle-paste-profiles" class="button-primary neutral">Import via Paste</button>
+        </div>
       </div>
 
       <!-- Paste Import Area for Profiles -->
