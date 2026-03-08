@@ -417,6 +417,35 @@ async function callOpenAi(request, sendResponse, config) {
   }
 }
 
+async function callFerdev(request, sendResponse) {
+  console.log("--- [DEBUG] callFerdev: START ---");
+  const systemInst = request.prompt;
+  const prompt = encodeURIComponent(systemInst);
+  const apiKey = "keysita_47JX47JX";
+  const url = `https://api.ferdev.my.id/ai/gemini?prompt=${prompt}&apikey=${apiKey}`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    console.log("--- [DEBUG] callFerdev: Response received", data);
+
+    const answer = data.result || data.text || (data.candidates && data.candidates[0]?.content?.parts[0]?.text);
+
+    if (answer) {
+      const cleanedText = answer.trim().replace(/^"|"$/g, "").replace(/\.$/, "");
+      sendResponse({ answer: cleanedText });
+    } else {
+      sendResponse({ error: "Could not extract answer from Ferdev response." });
+    }
+  } catch (err) {
+    console.error("--- [DEBUG] callFerdev: Fetch error", err);
+    sendResponse({ error: err.message });
+  }
+}
+
 let profileCreationState = {};
 
 async function verifyActivationWithBackend() {
@@ -660,6 +689,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   function callAiApiInternal(req, resSender, storage) {
     if (storage.aiProvider === "openai") {
       callOpenAi(req, resSender, storage.openAiConfig);
+    } else if (storage.aiProvider === "ferdev") {
+      callFerdev(req, resSender);
     } else {
       callGemini(req, resSender);
     }

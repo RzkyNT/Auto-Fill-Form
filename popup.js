@@ -375,6 +375,9 @@ function updateProviderSections(provider) {
   if (provider === "openai") {
     geminiSettingsEl.classList.add("hidden");
     openAiSettingsEl.classList.remove("hidden");
+  } else if (provider === "ferdev") {
+    geminiSettingsEl.classList.add("hidden");
+    openAiSettingsEl.classList.add("hidden");
   } else {
     geminiSettingsEl.classList.remove("hidden");
     openAiSettingsEl.classList.add("hidden");
